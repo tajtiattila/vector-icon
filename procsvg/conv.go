@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func conv_svg(fn string) (*ProgImage, error) {
+func ConvertSvg(fn string) (*ProgImage, error) {
 	f, err := os.Open(fn)
 	if err != nil {
 		return nil, err
@@ -167,7 +167,7 @@ func get_svg_solid_fill(e xml.StartElement) (color.Color, bool) {
 }
 
 func colorfromhex(s string) (color.Color, bool) {
-	if s == "" || s[1] != '#' {
+	if s == "" || s[0] != '#' {
 		return nil, false
 	}
 

@@ -48,7 +48,11 @@ func run_project(fn string) error {
 	}
 	defer os.Chdir(wd)
 
-	return simplify_svg(project)
+	if err := simplify_svg(project); err != nil {
+		return err
+	}
+
+	return pack_project(project)
 }
 
 func loadjson(fn string, v interface{}) error {

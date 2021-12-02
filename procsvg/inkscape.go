@@ -10,14 +10,17 @@ import (
 )
 
 type InkscapeShell struct {
+	started bool
+	err     error
+
 	cmd   *exec.Cmd
 	stdin io.WriteCloser
 }
 
-func NewInkscapeShell() (*InkscapeShell, error) {
+func NewInkscapeShell() *InkscapeShell {
 	ib, err := inkscapebin_checked()
 	if err != nil {
-		return nil, err
+		return &InkscapeShell{err: err}
 	}
 
 	c := exec.Command(ib, "--shell")
@@ -29,21 +32,47 @@ func NewInkscapeShell() (*InkscapeShell, error) {
 
 	w, err := c.StdinPipe()
 	if err != nil {
-		return nil, fmt.Errorf("Error setting up stdin pipe: %w", err)
+		return &InkscapeShell{err: fmt.Errorf("Error setting up stdin pipe: %w", err)}
 	}
 
-	if err := c.Start(); err != nil {
-		return nil, fmt.Errorf("Error starting inkscape: %w", err)
+	return &InkscapeShell{cmd: c, stdin: w}
+}
+
+func (is *InkscapeShell) Err() error {
+	return is.err
+}
+
+func (is *InkscapeShell) start() bool {
+	if is.err != nil {
+		return false
 	}
 
-	return &InkscapeShell{cmd: c, stdin: w}, nil
+	if is.started {
+		return true
+	}
+
+	if err := is.cmd.Start(); err != nil {
+		is.err = fmt.Errorf("Error starting inkscape: %w", err)
+		return false
+	}
+
+	is.started = true
+	return true
 }
 
 func (is *InkscapeShell) Cmd(cmd string) {
+	if !is.start() {
+		return
+	}
+
 	fmt.Fprintln(is.stdin, cmd)
 }
 
 func (is *InkscapeShell) Cmdf(format string, args ...interface{}) {
+	if !is.start() {
+		return
+	}
+
 	if !strings.HasSuffix(format, "\n") {
 		format += "\n"
 	}
@@ -51,9 +80,18 @@ func (is *InkscapeShell) Cmdf(format string, args ...interface{}) {
 }
 
 func (is *InkscapeShell) Close() error {
-	is.Cmd("quit")
-	is.stdin.Close()
-	return is.cmd.Wait()
+	var err error
+	if is.started {
+		is.Cmd("quit")
+		is.stdin.Close()
+		err = is.cmd.Wait()
+	}
+
+	if is.err != nil {
+		return is.err
+	}
+
+	return err
 }
 
 func inkscapebin_checked() (string, error) {

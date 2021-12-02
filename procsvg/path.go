@@ -12,6 +12,7 @@ func PathDCmds(pathd string) ([]PathCmd, error) {
 	d.run()
 
 	if d.err != nil {
+		fmt.Println(pathd)
 		return nil, d.err
 	}
 
@@ -281,7 +282,7 @@ func (d *pathdecoder) nextcmd() (cmd byte, relative bool) {
 
 	relative = c >= 'a'
 	if relative {
-		c -= 'a'
+		c -= 'a' - 'A'
 	}
 
 	return c, relative

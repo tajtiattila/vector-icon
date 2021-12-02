@@ -2,11 +2,62 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
+
+func pack_project(project Project) error {
+	m := make(map[string][]*ProgImage)
+	for _, sub := range project.SizeDirs {
+		dir := filepath.Join(project.IntermediateDir, sub)
+		svgs, err := readdirnames(dir, "*.svg")
+		if err != nil {
+			return err
+		}
+
+		for _, fn := range svgs {
+			name := strings.TrimSuffix(fn, "*svg")
+			path := filepath.Join(dir, fn)
+			if cli.verbose {
+				fmt.Fprintf(os.Stderr, "Packing %s\n", path)
+			}
+			x, err := ConvertSvg(path)
+			if err != nil {
+				return fmt.Errorf("error converting %s: %w", path, err)
+			}
+			m[name] = append(m[name], x)
+		}
+	}
+
+	var pe []PackElem
+	for n, im := range m {
+		pe = append(pe, PackElem{Name: n, Image: im})
+	}
+
+	sort.Slice(pe, func(i, j int) bool {
+		return pe[i].Name < pe[j].Name
+	})
+
+	k := IconPack{}
+	for _, e := range pe {
+		k.Add(e)
+	}
+
+	f, err := os.Create(project.Target)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	k.WriteTo(f)
+
+	return nil
+}
 
 type IconPack struct {
 	elem []PackElem
@@ -20,15 +71,9 @@ type PackElem struct {
 func (e *PackElem) writeTo(w io.Writer) error {
 	d := e.dataBytes()
 
-	var buf [32]byte
-	n := binary.PutUVarint(buf[:], uint64(len(v)))
+	writeUvarint(w, uint64(len(d)))
 
-	_, err := w.Write(buf[:n])
-	if err != nil {
-		return err
-	}
-
-	_, err = w.Write(d)
+	_, err := w.Write(d)
 	return err
 }
 
@@ -64,22 +109,33 @@ func (e *PackElem) dataBytes() []byte {
 	return buf.Bytes()
 }
 
-func (k *IconPack) AddSvg(basename, dirs ...string) error {
-	var im []*ProgImage
+func (k *IconPack) Add(pe PackElem) {
+	// sort icons by size
+	size := func(i int) int {
+		return pe.Image[i].Width * pe.Image[i].Height
+	}
+	sort.Slice(pe.Image, func(i, j int) bool {
+		return size(i) > size(j)
+	})
+
+	k.elem = append(k.elem, pe)
+}
+
+func (k *IconPack) AddSvg(basename string, dirs ...string) error {
+	pe := PackElem{
+		Name: strings.TrimSuffix(basename, ".svg"),
+	}
+
 	for _, d := range dirs {
 		x, err := ConvertSvg(filepath.Join(d, basename))
 		if err != nil {
 			return err
 		}
 
-		im = append(im, x)
+		pe.Image = append(pe.Image, x)
 	}
 
-	k.elem = append(k.elem, PackElem{
-		Name:  strings.TrimSuffix(basename, ".svg"),
-		Image: im,
-	})
-
+	k.Add(pe)
 	return nil
 }
 
@@ -87,7 +143,7 @@ func (k *IconPack) WriteTo(w0 io.Writer) (n int64, err error) {
 	w := &countWriter{w: w0}
 
 	fmt.Fprint(w, "icpk")
-	writeUVarint(uint64(len(k.elem)))
+	writeUvarint(w, uint64(len(k.elem)))
 
 	for _, e := range k.elem {
 		err := e.writeTo(w)
@@ -99,9 +155,9 @@ func (k *IconPack) WriteTo(w0 io.Writer) (n int64, err error) {
 	return w.n, nil
 }
 
-func writeUVarint(w io.Writer, v uint64) (n int, err error) {
+func writeUvarint(w io.Writer, v uint64) (n int, err error) {
 	var buf [32]byte
-	n := encoding.PutUVarint(buf[:], v)
+	n = binary.PutUvarint(buf[:], v)
 	return w.Write(buf[:n])
 }
 
@@ -111,6 +167,7 @@ type countWriter struct {
 }
 
 func (cw *countWriter) Write(p []byte) (n int, err error) {
-	n, err := cw.w.Write(p)
+	n, err = cw.w.Write(p)
 	cw.n += int64(n)
+	return n, err
 }

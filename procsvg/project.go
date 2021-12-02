@@ -10,13 +10,13 @@ type Project struct {
 	// intermediate dir relative to project file
 	IntermediateDir string `json:"intermediatedir"`
 
-	// target dir relative to project file
-	TargetDir string `json:"targetdir"`
+	// target relative to project file
+	Target string `json:"target"`
 }
 
 var DefaultProject = Project{
 	IconDir:         "icons",
 	IntermediateDir: "intermediate",
 	SizeDirs:        []string{"."},
-	TargetDir:       "target",
+	Target:          "target",
 }

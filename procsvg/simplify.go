@@ -8,10 +8,7 @@ import (
 
 func simplify_svg(project Project) error {
 
-	inkscape, err := NewInkscapeShell()
-	if err != nil {
-		return err
-	}
+	inkscape := NewInkscapeShell()
 	defer inkscape.Close()
 
 	for _, sub := range project.SizeDirs {
@@ -66,5 +63,5 @@ func simplify_svg_file(is *InkscapeShell, sf, tf string) error {
 	is.Cmd("export-do")
 	is.Cmd("file-close")
 
-	return nil
+	return is.Err()
 }
