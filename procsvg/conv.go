@@ -53,10 +53,10 @@ func (g *svgprog) finish() *ProgImage {
 
 func (g *svgprog) elem(e xml.StartElement) error {
 	if hasattr(e, "clip-path") {
-		fmt.Fprintln(os.Stderr, "clip-path found in %s", g.fn)
+		fmt.Fprintf(os.Stderr, "clip-path found in %s\n", g.fn)
 	}
 	if hasattr(e, "transform") {
-		fmt.Fprintln(os.Stderr, "transform found in %s", g.fn)
+		fmt.Fprintf(os.Stderr, "transform found in %s\n", g.fn)
 	}
 
 	switch e.Name.Local {

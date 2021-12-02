@@ -14,8 +14,9 @@ import (
 func pack_project(project Project) error {
 	m := make(map[string][]*ProgImage)
 	for _, sub := range project.SizeDirs {
+		sdir := filepath.Join(project.IconDir, sub)
 		dir := filepath.Join(project.IntermediateDir, sub)
-		svgs, err := readdirnames(dir, "*.svg")
+		svgs, err := readdirnames(sdir, "*.svg")
 		if err != nil {
 			return err
 		}

@@ -18,5 +18,5 @@ var DefaultProject = Project{
 	IconDir:         "icons",
 	IntermediateDir: "intermediate",
 	SizeDirs:        []string{"."},
-	Target:          "target",
+	Target:          "icons.iconpk",
 }

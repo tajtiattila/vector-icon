@@ -13,6 +13,7 @@ func PathDCmds(pathd string) ([]PathCmd, error) {
 
 	if d.err != nil {
 		fmt.Println(pathd)
+		fmt.Println(d.cmd)
 		return nil, d.err
 	}
 
@@ -29,6 +30,17 @@ type PathCmd struct {
 
 	// command coords (always absolute)
 	Pt []Point
+}
+
+func (c PathCmd) String() string {
+	sb := new(strings.Builder)
+	sb.WriteByte('{')
+	sb.WriteByte(c.Cmd)
+	for _, pt := range c.Pt {
+		fmt.Fprintf(sb, " %v,%v", pt.X, pt.Y)
+	}
+	sb.WriteByte('}')
+	return sb.String()
 }
 
 type pathdecoder struct {
@@ -152,7 +164,36 @@ func (d *pathdecoder) step() {
 		d.quadraticBézier(startp, v[1:], rel)
 
 	case 'A':
-		d.seterrf("Elliptic arc not implemented at %d", d.pos)
+		startp := d.pos
+		v := d.numbers()
+		if len(v) == 0 && len(v)%7 != 0 {
+			d.seterrf("Invalid arc at %d", startp)
+			return
+		}
+
+		for i := 0; i < len(v); i += 7 {
+			w := v[i : i+7]
+			r := Point{w[0], w[1]}
+			angle := w[2]
+			var largeArc, sweep bool
+			if w[3] != 0 {
+				largeArc = true
+			}
+			if w[4] != 0 {
+				sweep = true
+			}
+			var c Point
+			if rel {
+				c.X = d.last.X + w[5]
+				c.Y = d.last.Y + w[6]
+			} else {
+				c.X = w[5]
+				c.Y = w[6]
+			}
+			pts := arcToBezier(d.last, c, r, angle, largeArc, sweep)
+			d.addcmd('C', pts...)
+			d.lastc = d.last
+		}
 
 	case 'Z':
 		if d.first != d.last {
@@ -288,20 +329,18 @@ func (d *pathdecoder) nextcmd() (cmd byte, relative bool) {
 	return c, relative
 }
 
-func (d *pathdecoder) comma() {
+func (d *pathdecoder) skipcomma() {
 	d.skipspace()
 
 	if d.pos == len(d.data) {
-		d.seterr(io.ErrUnexpectedEOF)
 		return
 	}
 
-	if c := d.data[d.pos]; c != ',' {
-		d.seterr(fmt.Errorf("Expected comma ',' at position %d, got %q", d.pos, c))
-		return
+	if c := d.data[d.pos]; c == ',' {
+		d.pos++
 	}
 
-	d.pos++
+	d.skipspace()
 }
 
 func (d *pathdecoder) numbers() []float64 {
@@ -334,6 +373,9 @@ func (d *pathdecoder) number() float64 {
 	}
 
 	d.pos = e
+
+	d.skipcomma()
+
 	return v
 }
 
@@ -347,7 +389,6 @@ func (d *pathdecoder) points() []Point {
 
 func (d *pathdecoder) point() Point {
 	x := d.number()
-	d.comma()
 	y := d.number()
 	return Point{x, y}
 }
@@ -363,5 +404,5 @@ func (d *pathdecoder) seterr(err error) {
 }
 
 func isnumbyte(c byte) bool {
-	return c == '.' || c == '-' || ('0' <= c && c <= '9')
+	return c == '.' || c == '-' || ('0' <= c && c <= '9') || c == 'e' || c == 'E'
 }
