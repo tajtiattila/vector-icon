@@ -11,6 +11,8 @@ import (
 	"strings"
 )
 
+var byteOrder = binary.LittleEndian
+
 func pack_project(project Project) error {
 	m := make(map[string][]*ProgImage)
 	for _, sub := range project.SizeDirs {
@@ -27,7 +29,7 @@ func pack_project(project Project) error {
 			if cli.verbose {
 				fmt.Fprintf(os.Stderr, "Packing %s\n", path)
 			}
-			x, err := ConvertSvg(path)
+			x, err := ConvertSvg(path, project.Epsilon)
 			if err != nil {
 				return fmt.Errorf("error converting %s: %w", path, err)
 			}
@@ -72,7 +74,7 @@ type PackElem struct {
 func (e *PackElem) writeTo(w io.Writer) error {
 	d := e.dataBytes()
 
-	writeUvarint(w, uint64(len(d)))
+	writeUint32(w, uint32(len(d)))
 
 	_, err := w.Write(d)
 	return err
@@ -90,15 +92,13 @@ func (e *PackElem) dataBytes() []byte {
 	buf.WriteString(n)
 	buf.WriteByte(byte(len(e.Image)))
 
-	enc := binary.LittleEndian
-
 	const ihbytes = 8
 	var ih [ihbytes]byte // image header
 	ofs := len(e.Image) * ihbytes
 	for _, im := range e.Image {
-		enc.PutUint16(ih[0:], uint16(im.Width))
-		enc.PutUint16(ih[2:], uint16(im.Height))
-		enc.PutUint32(ih[4:], uint32(ofs))
+		byteOrder.PutUint16(ih[0:], uint16(im.Width))
+		byteOrder.PutUint16(ih[2:], uint16(im.Height))
+		byteOrder.PutUint32(ih[4:], uint32(ofs))
 		buf.Write(ih[:])
 		ofs += len(im.Data)
 	}
@@ -122,29 +122,11 @@ func (k *IconPack) Add(pe PackElem) {
 	k.elem = append(k.elem, pe)
 }
 
-func (k *IconPack) AddSvg(basename string, dirs ...string) error {
-	pe := PackElem{
-		Name: strings.TrimSuffix(basename, ".svg"),
-	}
-
-	for _, d := range dirs {
-		x, err := ConvertSvg(filepath.Join(d, basename))
-		if err != nil {
-			return err
-		}
-
-		pe.Image = append(pe.Image, x)
-	}
-
-	k.Add(pe)
-	return nil
-}
-
 func (k *IconPack) WriteTo(w0 io.Writer) (n int64, err error) {
 	w := &countWriter{w: w0}
 
 	fmt.Fprint(w, "icpk")
-	writeUvarint(w, uint64(len(k.elem)))
+	writeUint32(w, uint32(len(k.elem)))
 
 	for _, e := range k.elem {
 		err := e.writeTo(w)
@@ -156,10 +138,10 @@ func (k *IconPack) WriteTo(w0 io.Writer) (n int64, err error) {
 	return w.n, nil
 }
 
-func writeUvarint(w io.Writer, v uint64) (n int, err error) {
-	var buf [32]byte
-	n = binary.PutUvarint(buf[:], v)
-	return w.Write(buf[:n])
+func writeUint32(w io.Writer, v uint32) (n int, err error) {
+	var buf [4]byte
+	byteOrder.PutUint32(buf[:], v)
+	return w.Write(buf[:])
 }
 
 type countWriter struct {

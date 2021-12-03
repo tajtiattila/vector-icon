@@ -1,4 +1,10 @@
 
+Icon pack specification
+=======================
+
+All numbers are intepreted as little endian,
+colors are non-alpha-premultiplied.
+
 Icon pack format
 ================
 
@@ -9,7 +15,7 @@ Icon pack header
 ----------------
 
 Magic [4 x BYTE] "icpk"
-NumIcons [VARINT] number of icons in pack
+NumIcons [UINT32] number of icons in pack
 
 Packed icon image
 -----------------
@@ -18,10 +24,12 @@ Packed icon image
 Nx Icon variant headers (N = NumImage in Icon header)
 Nx Icon variant images  (N = NumImage in Icon header)
 
+Variant images are ordered in decreasing size (area) in the icon headers.
+
 Icon header
 -----------
 
-FileSize [VARINT] icon size in bytes
+FileSize [UINT32] icon size in bytes
 NameLen  [BYTE]   icon name length
 Name              icon name (UTF-8)
 NumImage [BYTE]   number of image variants for this icon
@@ -31,7 +39,7 @@ Icon variant header
 
 Width    [UINT16] suggested icon width in pixels
 Height   [UINT16] suggested icon height in pixels
-Offset   [UINT32] image data offset from end of icon header
+Offset   [UINT32] image data offset from end of icon variant headers
 
 Icon variant image
 ------------------

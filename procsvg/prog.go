@@ -17,12 +17,12 @@ type ProgMem struct {
 	buf bytes.Buffer
 
 	// coordinate precision
-	precision float64
+	Precision float64
 }
 
 func NewProgMem(prec float64) *ProgMem {
 	return &ProgMem{
-		precision: prec,
+		Precision: prec,
 	}
 }
 
@@ -39,11 +39,11 @@ func (m *ProgMem) Byte(b byte) {
 }
 
 func (m *ProgMem) Color(c color.Color) {
-	r, b, g, a := c.RGBA()
-	m.Byte(byte(r >> 8))
-	m.Byte(byte(g >> 8))
-	m.Byte(byte(b >> 8))
-	m.Byte(byte(a >> 8))
+	x := color.NRGBAModel.Convert(c).(color.NRGBA)
+	m.Byte(x.R)
+	m.Byte(x.G)
+	m.Byte(x.B)
+	m.Byte(x.A)
 }
 
 func (m *ProgMem) ViewBox(l, t, r, b float64) {
@@ -105,7 +105,7 @@ func (m *ProgMem) Pts(v []Point) {
 
 func (m *ProgMem) Coord(v float64) {
 	var buf [4]byte
-	n := CoordBytes(buf[:], v, m.precision)
+	n := CoordBytes(buf[:], v, m.Precision)
 	m.buf.Write(buf[:n])
 }
 
@@ -163,7 +163,7 @@ func CoordFromBytes(p []byte) (v float64, n int) {
 	}
 
 	if len(p) >= 2 && (p[1]&0x80) == 0 {
-		x := ((int(p[0]) << 7) | int(p[0]&0x7f)) - (128 * 64)
+		x := ((int(p[1]) << 7) | int(p[0]&0x7f)) - (128 * 64)
 		return float64(x) / 64, 2
 	}
 

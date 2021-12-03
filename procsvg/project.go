@@ -10,6 +10,9 @@ type Project struct {
 	// intermediate dir relative to project file
 	IntermediateDir string `json:"intermediatedir"`
 
+	// conversion precision
+	Epsilon float64 `json:"epsilon"`
+
 	// target relative to project file
 	Target string `json:"target"`
 }
@@ -18,5 +21,6 @@ var DefaultProject = Project{
 	IconDir:         "icons",
 	IntermediateDir: "intermediate",
 	SizeDirs:        []string{"."},
+	Epsilon:         1e-4,
 	Target:          "icons.iconpk",
 }

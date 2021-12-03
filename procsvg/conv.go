@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func ConvertSvg(fn string) (*ProgImage, error) {
+func ConvertSvg(fn string, precision float64) (*ProgImage, error) {
 	f, err := os.Open(fn)
 	if err != nil {
 		return nil, err
@@ -18,6 +18,7 @@ func ConvertSvg(fn string) (*ProgImage, error) {
 	defer f.Close()
 
 	g := svgprog{fn: fn}
+	g.mem.Precision = precision
 
 	d := xml.NewDecoder(f)
 	for {
@@ -99,12 +100,20 @@ func (g *svgprog) svg(e xml.StartElement) error {
 }
 
 func (g *svgprog) path(e xml.StartElement) error {
-	if err := g.handle_fill(e); err != nil {
+	cmds, err := PathDCmds(findattr(e, "d"))
+	if err != nil {
 		return err
 	}
 
-	cmds, err := PathDCmds(findattr(e, "d"))
-	if err != nil {
+	if len(cmds) == 0 {
+		return nil
+	}
+
+	if len(cmds) == 1 && cmds[0].Cmd == 'M' {
+		return nil
+	}
+
+	if err := g.handle_fill(e); err != nil {
 		return err
 	}
 
