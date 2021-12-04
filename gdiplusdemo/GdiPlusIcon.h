@@ -26,7 +26,11 @@ public:
 	void QuadraticBezierTo(std::vector<vectoricon::Point> const& p) override;
 	void ClosePath() override;
 
+	void DebugSinglePath(size_t n);
+
 private:
+	void DrawIconImpl(vectoricon::Icon const& icon);
+
 	void endPath();
 	std::pair<const Gdiplus::PointF*, INT>
 		convertPoints(std::vector<vectoricon::Point> const& pts);
@@ -45,6 +49,9 @@ private:
 	vectoricon::Point m_startp = {0.f, 0.f};
 	bool m_hasPath = false;
 	std::vector<Gdiplus::PointF> m_ptbuf;
+
+	size_t m_currentPathIdx = 0;
+	size_t m_debugPathIdx = 0;
 
 	int m_ox = 0;
 	int m_oy = 0;

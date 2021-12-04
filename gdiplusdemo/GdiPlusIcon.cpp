@@ -29,7 +29,7 @@ void GdiPlusIconEngine::DrawIconDirect(HDC hdc, RECT const* rr, vectoricon::Icon
 
 	m_gr = &gr;
 
-	vectoricon::DrawIcon(icon, m_dx, m_dy, this);
+	DrawIconImpl(icon);
 
 	m_gr = nullptr;
 }
@@ -53,7 +53,7 @@ void GdiPlusIconEngine::DrawIcon(HDC hdc, RECT const* rr, vectoricon::Icon const
 	m_graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias8x8);
 	m_graphics.SetCompositingMode(Gdiplus::CompositingModeSourceOver);
 
-	vectoricon::DrawIcon(icon, m_dx, m_dy, this);
+	DrawIconImpl(icon);
 
 	m_dirty = true;
 
@@ -71,6 +71,16 @@ void GdiPlusIconEngine::DrawIcon(HDC hdc, RECT const* rr, vectoricon::Icon const
 			hdcgr, 0, 0, m_dx, m_dy, bf);
 
 	m_graphics.ReleaseHDC(hdcgr);
+}
+
+void GdiPlusIconEngine::DrawIconImpl(vectoricon::Icon const& icon) {
+	m_currentPathIdx = 1;
+
+	vectoricon::DrawIcon(icon, m_dx, m_dy, this);
+}
+
+void GdiPlusIconEngine::DebugSinglePath(size_t n) {
+	m_debugPathIdx = n;
 }
 
 void GdiPlusIconEngine::ViewBox(float xmin, float ymin, float xmax, float ymax) {
@@ -150,7 +160,11 @@ void GdiPlusIconEngine::ClosePath() {
 	endPath();
 
 	if (m_hasPath) {
-		m_gr->FillPath(&m_solidBrush, &m_path);
+		if (m_debugPathIdx == 0 || m_currentPathIdx == m_debugPathIdx) {
+			m_gr->FillPath(&m_solidBrush, &m_path);
+		}
+
+		m_currentPathIdx++;
 	}
 
 	m_path.Reset();
@@ -159,7 +173,7 @@ void GdiPlusIconEngine::ClosePath() {
 }
 
 void GdiPlusIconEngine::endPath() {
-	if (m_hasPath) {
+	if (m_hasPath && (m_cursor.x != m_startp.x || m_cursor.y != m_startp.y)) {
 		m_path.AddLine(m_cursor.x, m_cursor.y, m_startp.x, m_startp.y);
 	}
 }

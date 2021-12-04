@@ -22,6 +22,9 @@ public:
 
 	size_t paintSizeIdx = 0;
 	static std::vector<int> paintSizes;
+
+	int debugPathIdx = 0;
+	int singleIconIdx = 0;
 };
 
 std::vector<int> Window::paintSizes = {16, 20, 24, 28, 32, 48, 64, 128};
@@ -156,20 +159,58 @@ void Window::OnKeyDown(WPARAM w) {
 		Invalidate();
 		break;
 
+	case 'W':
+		debugPathIdx++;
+		Invalidate();
+		break;
+
+	case 'S':
+		if (debugPathIdx != 0) {
+			debugPathIdx--;
+		}
+		Invalidate();
+		break;
+
+	case 'A':
+		singleIconIdx--;
+		if (singleIconIdx < 0) {
+			singleIconIdx = pack.size();
+		}
+		Invalidate();
+		break;
+
+	case 'D':
+		singleIconIdx++;
+		if (singleIconIdx > pack.size()) {
+			singleIconIdx = 0;
+		}
+		Invalidate();
+		break;
 	}
 }
 
 void Window::OnPaint(HDC dc, int dx, int dy) {
+	COLORREF bkcolor = RGB(192, 192, 192);
+
+	HBRUSH hbr = ::CreateSolidBrush(bkcolor);
+	RECT rect{0, 0, dx, dy};
+	::FillRect(dc, &rect, hbr);
+	::DeleteObject(hbr);
+
 	static constexpr int pad = 8;
 	int x = pad, y = pad;
 
 	int paintSize = paintSizes[paintSizeIdx];
 
-#if 0
-	RECT r{x, y, x+paintSize, y+paintSize};
-	eng->DrawIconDirect(dc, &r, *pack.begin());
-	return;
-#endif
+	eng->DebugSinglePath(debugPathIdx);
+
+	int i = int(singleIconIdx) - 1;
+	if (i >= 0) {
+		auto it = pack.begin() + i;
+		RECT r{x, y, x+paintSize, y+paintSize};
+		eng->DrawIconDirect(dc, &r, *it);
+		return;
+	}
 
 	for (auto const& icon : pack) {
 		RECT r{x, y, x+paintSize, y+paintSize};

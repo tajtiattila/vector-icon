@@ -28,6 +28,8 @@ public:
 
 	const Icon* find(std::string const& name) const;
 
+	size_t size() const { return icons_.size(); }
+
 private:
 	std::vector<Icon> icons_;
 	std::unordered_map<std::string, size_t> nameToIndex_;
