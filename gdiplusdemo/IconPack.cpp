@@ -54,10 +54,13 @@ std::optional<Icon> loadIcon(std::istream& strm) {
 		RawImage ri;
 		ri.dx = readUint16(strm);
 		ri.dy = readUint16(strm);
+		ri.size = readUint32(strm);
+
 		ri.offset = ofs;
+
 		icon.images.push_back(ri);
 
-		ofs += readUint32(strm);
+		ofs += ri.size;
 	}
 
 	if (!strm.good()) {
@@ -190,13 +193,13 @@ private:
 	const uint8_t* end;
 };
 
-bool drawIcon(Icon const& icon, uint32_t ofs, DrawEngine* eng) {
-	if (ofs > icon.data.size()) {
-		return true;
+bool drawImage(Icon const& icon, uint32_t ofs, uint32_t sz, DrawEngine* eng) {
+	if (ofs+sz > icon.data.size()) {
+		return false;
 	}
 
 	const uint8_t* base = icon.data.data();
-	ProgMem pm(base+ofs, base+icon.data.size());
+	ProgMem pm(base+ofs, base+ofs+sz);
 
 	float xmin = pm.coord();
 	float ymin = pm.coord();
@@ -219,6 +222,7 @@ bool drawIcon(Icon const& icon, uint32_t ofs, DrawEngine* eng) {
 	std::vector<Point> ptbuf;
 	while (pm.good()) {
 		uint8_t op = pm.byte();
+		uint8_t t = op & 0xf0;
 		switch (op & 0xf0) {
 		case 0x00:
 			z();
@@ -244,16 +248,19 @@ bool drawIcon(Icon const& icon, uint32_t ofs, DrawEngine* eng) {
 			break;
 
 		case 0x70:
-			z();
-			if (op == 0x70) {
+			if (op == 0x70 || op == 0x71) {
 				// MoveTo
+				if (op == 0x70) {
+					z();
+				}
 				eng->MoveTo(pm.point());
 			} else {
 				return false;
 			}
 			break;
 
-		case 0x80, 0x90: {
+		case 0x80:
+		case 0x90: {
 			// LineTo
 			size_t rep = 1 + size_t(op - 0x80);
 			pm.points(ptbuf, rep);
@@ -297,11 +304,12 @@ bool DrawIcon(Icon const& icon, uint16_t dx, uint16_t dy, DrawEngine* eng) {
 
 	for (auto& m : icon.images) {
 		if (m.dx <= dx && m.dy <= dy) {
-			return detail::drawIcon(icon, m.offset, eng);
+			return detail::drawImage(icon, m.offset, m.size, eng);
 		}
 	}
 
-	return detail::drawIcon(icon, icon.images.back().offset, eng);
+	auto const& m = icon.images.back();
+	return detail::drawImage(icon, m.offset, m.size, eng);
 }
 
 } // end namespace vectoricon

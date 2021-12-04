@@ -11,14 +11,20 @@
 
 class Window {
 public:
+	void Invalidate();
+
 	void OnKeyDown(WPARAM);
 	void OnPaint(HDC dc, int dx, int dy);
 
-	GdiPlusIconEngine eng;
+	HWND hwnd;
+	GdiPlusIconEngine* eng;
 	vectoricon::Pack pack;
 
-	int paintSize = 16;
+	size_t paintSizeIdx = 0;
+	static std::vector<int> paintSizes;
 };
+
+std::vector<int> Window::paintSizes = {16, 20, 24, 28, 32, 48, 64, 128};
 
 Window g_window;
 
@@ -27,10 +33,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		PWSTR pCmdLine, int nCmdShow) {
 
-	std::ifstream strm("C:/src/rts/head/CLIENT/SRC/RES/rts.iconpk",
-			std::ifstream::in | std::ifstream::binary);
-	if (!g_window.pack.load(strm)) {
-		return 0;
+	{
+		std::ifstream strm("C:/src/rts/head/CLIENT/SRC/RES/rts.iconpk",
+				std::ifstream::in | std::ifstream::binary);
+		if (!g_window.pack.load(strm)) {
+			return 0;
+		}
 	}
 
 	using namespace Gdiplus;
@@ -74,6 +82,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	ULONG_PTR           gdiplusToken;
 	GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
 
+	g_window.hwnd = hwnd;
+	g_window.eng = new GdiPlusIconEngine;
+
     ShowWindow(hwnd, nCmdShow);
 	UpdateWindow(hwnd);
 
@@ -102,7 +113,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			PostQuitMessage(0);
 			return 0;
 		}
-		break;
+		g_window.OnKeyDown(wParam);
+		return 0;
 
     case WM_SIZE:
 		InvalidateRect(hwnd, nullptr, TRUE);
@@ -126,14 +138,42 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 }
 
 void Window::OnKeyDown(WPARAM w) {
+	switch (w) {
+
+	case 'J':
+		paintSizeIdx++;
+		if (paintSizeIdx >= paintSizes.size()) {
+			paintSizeIdx = 0;
+		}
+		Invalidate();
+		break;
+
+	case 'K':
+		paintSizeIdx--;
+		if (paintSizeIdx >= paintSizes.size()) {
+			paintSizeIdx = paintSizes.size() - 1;
+		}
+		Invalidate();
+		break;
+
+	}
 }
 
 void Window::OnPaint(HDC dc, int dx, int dy) {
 	static constexpr int pad = 8;
 	int x = pad, y = pad;
+
+	int paintSize = paintSizes[paintSizeIdx];
+
+#if 0
+	RECT r{x, y, x+paintSize, y+paintSize};
+	eng->DrawIconDirect(dc, &r, *pack.begin());
+	return;
+#endif
+
 	for (auto const& icon : pack) {
 		RECT r{x, y, x+paintSize, y+paintSize};
-		eng.DrawIcon(dc, &r, icon);
+		eng->DrawIconDirect(dc, &r, icon);
 
 		x += paintSize + pad;
 		if (x + paintSize > dx) {
@@ -145,3 +185,8 @@ void Window::OnPaint(HDC dc, int dx, int dy) {
 		}
 	}
 }
+
+void Window::Invalidate() {
+	InvalidateRect(hwnd, nullptr, TRUE);
+}
+

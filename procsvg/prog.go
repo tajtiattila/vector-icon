@@ -18,6 +18,8 @@ type ProgMem struct {
 
 	// coordinate precision
 	Precision float64
+
+	inPath bool
 }
 
 func NewProgMem(prec float64) *ProgMem {
@@ -53,13 +55,22 @@ func (m *ProgMem) ViewBox(l, t, r, b float64) {
 	m.Coord(b)
 }
 
+func (m *ProgMem) BeginPath() {
+	m.inPath = false
+}
+
 func (m *ProgMem) PathCmd(c PathCmd) error {
 	switch c.Cmd {
 	case 'M':
 		if len(c.Pt) != 1 {
 			return fmt.Errorf("Move op with %d points", len(c.Pt))
 		}
-		m.Byte(0x70)
+		if !m.inPath {
+			m.Byte(0x70)
+			m.inPath = true
+		} else {
+			m.Byte(0x71)
+		}
 		m.Pts(c.Pt)
 		return nil
 
@@ -67,31 +78,42 @@ func (m *ProgMem) PathCmd(c PathCmd) error {
 		if len(c.Pt) == 0 {
 			return fmt.Errorf("Empty line op")
 		}
-		return m.addOp(0x80, 0x20, c.Pt)
+		return m.addOp(c.Cmd, 0x80, 0x20, 1, c.Pt)
 
 	case 'C':
-		if n := len(c.Pt); n == 0 || n%3 != 0 {
+		mul := 3
+		if n := len(c.Pt); n == 0 || n%mul != 0 {
 			return fmt.Errorf("Empty or invalid cubic Bézier op length %d", n)
 		}
-		return m.addOp(0xa0, 0x10, c.Pt)
+		return m.addOp(c.Cmd, 0xa0, 0x10, mul, c.Pt)
 
 	case 'Q':
-		if n := len(c.Pt); n == 0 || n%2 != 0 {
+		mul := 2
+		if n := len(c.Pt); n == 0 || n%mul != 0 {
 			return fmt.Errorf("Empty or invalid quadratic Bézier op length %d", n)
 		}
-		return m.addOp(0xb0, 0x10, c.Pt)
+		return m.addOp(c.Cmd, 0xb0, 0x10, mul, c.Pt)
 	}
 
 	return fmt.Errorf("Unknown path cmd %q", c.Cmd)
 }
 
-func (m *ProgMem) addOp(baseop byte, maxrep int, pts []Point) error {
-	for len(pts) > maxrep {
-		m.Byte(baseop + byte(maxrep-1))
-		m.Pts(pts[:maxrep])
-		pts = pts[maxrep:]
+func (m *ProgMem) addOp(cmd byte, baseop byte, maxrep, mod int, pts []Point) error {
+	n := len(pts)
+	if n == 0 {
+		return fmt.Errorf("Empty %c op", cmd)
 	}
-	m.Byte(baseop + byte(len(pts)-1))
+	if n%mod != 0 {
+		return fmt.Errorf("Invalid %c op, length %d must be mod %d", cmd, n, mod)
+	}
+
+	rng := mod * maxrep
+	for len(pts) > rng {
+		m.Byte(baseop + byte(maxrep-1))
+		m.Pts(pts[:rng])
+		pts = pts[rng:]
+	}
+	m.Byte(baseop + byte(len(pts)/mod-1))
 	m.Pts(pts)
 	return nil
 }

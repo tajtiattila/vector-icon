@@ -10,6 +10,7 @@ namespace vectoricon {
 struct RawImage {
 	uint16_t dx, dy;
 	uint32_t offset; // icon data offset
+	uint32_t size; // icon data size
 };
 
 struct Icon {

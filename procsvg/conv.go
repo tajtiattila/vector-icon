@@ -17,27 +17,86 @@ func ConvertSvg(fn string, precision float64) (*ProgImage, error) {
 	}
 	defer f.Close()
 
+	svg, err := xmlTree(f)
+	if err != nil {
+		return nil, err
+	}
+	//pathSort(svg)
+
 	g := svgprog{fn: fn}
 	g.mem.Precision = precision
+	g.tree(svg)
 
-	d := xml.NewDecoder(f)
+	return g.finish(), nil
+}
+
+type Node struct {
+	Name xml.Name
+	Attr []xml.Attr
+	Node []Node // child nodes
+}
+
+func xmlTree(r io.Reader) (Node, error) {
+	d := xml.NewDecoder(r)
+
+	var root []Node
+	var stack []*Node
 	for {
 		tok, err := d.Token()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return nil, err
+			return Node{}, err
 		}
 
-		if x, ok := tok.(xml.StartElement); ok {
-			if err := g.elem(x); err != nil {
-				return nil, err
+		switch x := tok.(type) {
+		case xml.StartElement:
+			var node Node
+			node.Name = x.Name
+			node.Attr = x.Attr
+			var p *Node
+			if n := len(stack); n == 0 {
+				root = append(root, node)
+				p = &root[len(root)-1]
+			} else {
+				parent := stack[n-1]
+				parent.Node = append(parent.Node, node)
+				p = &parent.Node[len(parent.Node)-1]
 			}
+			stack = append(stack, p)
+
+		case xml.EndElement:
+			n := len(stack)
+			stack = stack[:n-1]
 		}
 	}
 
-	return g.finish(), nil
+	switch len(root) {
+	case 0:
+		return Node{}, fmt.Errorf("Empty doc")
+	case 1:
+		return root[0], nil
+	default:
+		return Node{}, fmt.Errorf("Multiple root nodes")
+	}
+}
+
+func pathSort(n Node) {
+	var path, other []Node
+	for _, n := range n.Node {
+		pathSort(n)
+		if n.Name.Local == "path" {
+			path = append(path, n)
+		} else {
+			other = append(other, n)
+		}
+	}
+
+	n.Node = append(n.Node[:0], other...)
+	for i := len(path) - 1; i >= 0; i-- {
+		n.Node = append(n.Node, path[i])
+	}
 }
 
 type svgprog struct {
@@ -52,43 +111,58 @@ func (g *svgprog) finish() *ProgImage {
 	return g.im
 }
 
-func (g *svgprog) elem(e xml.StartElement) error {
-	if hasattr(e, "clip-path") {
-		fmt.Fprintf(os.Stderr, "clip-path found in %s\n", g.fn)
-	}
-	if hasattr(e, "transform") {
-		fmt.Fprintf(os.Stderr, "transform found in %s\n", g.fn)
+func (g *svgprog) tree(n Node) error {
+	if err := g.node(n); err != nil {
+		return err
 	}
 
-	switch e.Name.Local {
-	case "svg":
-		return g.svg(e)
-
-	case "path":
-		return g.path(e)
+	for _, child := range n.Node {
+		if err := g.tree(child); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-func (g *svgprog) svg(e xml.StartElement) error {
+func (g *svgprog) node(n Node) error {
+	if hasattr(n, "clip-path") {
+		fmt.Fprintf(os.Stderr, "clip-path found in %s\n", g.fn)
+	}
+	if hasattr(n, "transform") {
+		fmt.Fprintf(os.Stderr, "transform found in %s\n", g.fn)
+	}
+
+	var err error
+	switch n.Name.Local {
+	case "svg":
+		err = g.svg(n)
+
+	case "path":
+		err = g.path(n)
+	}
+
+	return err
+}
+
+func (g *svgprog) svg(n Node) error {
 	g.im = new(ProgImage)
 
 	var err error
 
-	ws := findattr(e, "width")
+	ws := findattr(n, "width")
 	g.im.Width, err = strconv.Atoi(strings.TrimSuffix(ws, "px"))
 	if err != nil {
 		return fmt.Errorf("error parsing width %q", ws)
 	}
 
-	hs := findattr(e, "height")
+	hs := findattr(n, "height")
 	g.im.Height, err = strconv.Atoi(strings.TrimSuffix(hs, "px"))
 	if err != nil {
 		return fmt.Errorf("error parsing width %q", hs)
 	}
 
-	vb := findattr(e, "viewBox")
+	vb := findattr(n, "viewBox")
 	var minx, miny, width, height float64
 	_, err = fmt.Sscan(vb, &minx, &miny, &width, &height)
 	if err != nil {
@@ -99,8 +173,8 @@ func (g *svgprog) svg(e xml.StartElement) error {
 	return nil
 }
 
-func (g *svgprog) path(e xml.StartElement) error {
-	cmds, err := PathDCmds(findattr(e, "d"))
+func (g *svgprog) path(n Node) error {
+	cmds, err := PathDCmds(findattr(n, "d"))
 	if err != nil {
 		return err
 	}
@@ -113,10 +187,11 @@ func (g *svgprog) path(e xml.StartElement) error {
 		return nil
 	}
 
-	if err := g.handle_fill(e); err != nil {
+	if err := g.handle_fill(n); err != nil {
 		return err
 	}
 
+	g.mem.BeginPath()
 	for _, c := range cmds {
 		if err := g.mem.PathCmd(c); err != nil {
 			return err
@@ -126,8 +201,8 @@ func (g *svgprog) path(e xml.StartElement) error {
 	return nil
 }
 
-func (g *svgprog) handle_fill(e xml.StartElement) error {
-	c, ok := get_svg_solid_fill(e)
+func (g *svgprog) handle_fill(n Node) error {
+	c, ok := get_svg_solid_fill(n)
 	if !ok {
 		return fmt.Errorf("can't find fill style")
 	}
@@ -138,8 +213,8 @@ func (g *svgprog) handle_fill(e xml.StartElement) error {
 	return nil
 }
 
-func hasattr(e xml.StartElement, name string) bool {
-	for _, a := range e.Attr {
+func hasattr(n Node, name string) bool {
+	for _, a := range n.Attr {
 		if a.Name.Local == name {
 			return true
 		}
@@ -147,10 +222,10 @@ func hasattr(e xml.StartElement, name string) bool {
 	return false
 }
 
-func findattr(e xml.StartElement, name string) string {
+func findattr(n Node, name string) string {
 	var r string
 	found := false
-	for _, a := range e.Attr {
+	for _, a := range n.Attr {
 		if a.Name.Local == name {
 			if found {
 				panic(fmt.Errorf("duplicate attr %s", name))
@@ -162,8 +237,8 @@ func findattr(e xml.StartElement, name string) string {
 	return r
 }
 
-func get_svg_solid_fill(e xml.StartElement) (color.Color, bool) {
-	fs := findattr(e, "fill")
+func get_svg_solid_fill(n Node) (color.Color, bool) {
+	fs := findattr(n, "fill")
 	if fs != "" {
 		c, ok := colorfromhex(fs)
 		if ok {
@@ -171,7 +246,7 @@ func get_svg_solid_fill(e xml.StartElement) (color.Color, bool) {
 		}
 	}
 
-	style := cssdecode(findattr(e, "style"))
+	style := cssdecode(findattr(n, "style"))
 	return colorfromhex(style["fill"])
 }
 

@@ -57,7 +57,26 @@ func pack_project(project Project) error {
 	}
 	defer f.Close()
 
-	k.WriteTo(f)
+	var w io.Writer
+	if cli.disasm {
+		fa, err := os.Create(project.Target + ".disasm")
+		if err != nil {
+			return err
+		}
+		defer fa.Close()
+
+		pr, pw := io.Pipe()
+		go func() {
+			DumpPack(pr, fa)
+		}()
+		defer pw.Close()
+
+		w = io.MultiWriter(f, pw)
+	} else {
+		w = f
+	}
+
+	k.WriteTo(w)
 
 	return nil
 }
@@ -120,10 +139,12 @@ func (k *IconPack) Add(pe PackElem) {
 	k.elem = append(k.elem, pe)
 }
 
+const PackMagic = "icpk"
+
 func (k *IconPack) WriteTo(w0 io.Writer) (n int64, err error) {
 	w := &countWriter{w: w0}
 
-	fmt.Fprint(w, "icpk")
+	fmt.Fprint(w, PackMagic)
 	writeUint32(w, uint32(len(k.elem)))
 
 	for _, e := range k.elem {

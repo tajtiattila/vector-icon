@@ -64,20 +64,25 @@ func (d *pathdecoder) run() {
 }
 
 func (d *pathdecoder) step() {
-	c, rel := d.nextcmd()
+	c, relflag := d.nextcmd()
+
+	rel := func(p Point) Point {
+		if relflag {
+			return Point{
+				X: d.last.X + p.X,
+				Y: d.last.Y + p.Y,
+			}
+		} else {
+			return p
+		}
+	}
+
 	switch c {
 
 	case 'M':
 		pts := d.points()
-		p0 := pts[0]
-		if rel {
-			d.last.X += p0.X
-			d.last.Y += p0.Y
-		} else {
-			d.last = p0
-		}
-		d.first = d.last
-		d.addcmd('M', d.last)
+		p0 := rel(pts[0])
+		d.addcmd('M', p0)
 		d.line(pts[1:], rel)
 
 	case 'L':
@@ -86,23 +91,25 @@ func (d *pathdecoder) step() {
 	case 'H':
 		// horizontal lines
 		for _, n := range d.numbers() {
-			if rel {
-				d.last.X += n
+			q := d.last
+			if relflag {
+				q.X += n
 			} else {
-				d.last.X = n
+				q.X = n
 			}
-			d.addcmd('L', d.last)
+			d.addcmd('L', q)
 		}
 
 	case 'V':
 		// vertical lines
 		for _, n := range d.numbers() {
-			if rel {
-				d.last.Y += n
+			q := d.last
+			if relflag {
+				q.Y += n
 			} else {
-				d.last.Y = n
+				q.Y = n
 			}
-			d.addcmd('L', d.last)
+			d.addcmd('L', q)
 		}
 
 	case 'C':
@@ -121,17 +128,10 @@ func (d *pathdecoder) step() {
 		}
 
 		var p1, p2, p3 Point
-
 		p1.X = 2*d.last.X - d.lastc.X
 		p1.Y = 2*d.last.Y - d.lastc.Y
-		if rel {
-			p2.X = d.last.X + v[0].X
-			p2.Y = d.last.Y + v[0].Y
-			p3.X = d.last.X + v[1].X
-			p3.Y = d.last.Y + v[1].Y
-		} else {
-			p2, p3 = v[0], v[1]
-		}
+		p2 = rel(v[0])
+		p3 = rel(v[1])
 
 		d.addcmd('C', p1, p2, p3)
 		d.cubicBézier(startp, v[2:], rel)
@@ -154,12 +154,7 @@ func (d *pathdecoder) step() {
 		var p1, p2 Point
 		p1.X = 2*d.last.X - d.lastq.X
 		p1.Y = 2*d.last.Y - d.lastq.Y
-		if rel {
-			p2.X = d.last.X + v[0].X
-			p2.Y = d.last.Y + v[0].Y
-		} else {
-			p2 = v[0]
-		}
+		p2 = rel(v[0])
 		d.addcmd('Q', p1, p2)
 		d.quadraticBézier(startp, v[1:], rel)
 
@@ -182,32 +177,20 @@ func (d *pathdecoder) step() {
 			if w[4] != 0 {
 				sweep = true
 			}
-			var c Point
-			if rel {
-				c.X = d.last.X + w[5]
-				c.Y = d.last.Y + w[6]
-			} else {
-				c.X = w[5]
-				c.Y = w[6]
-			}
+			c := rel(Point{w[5], w[6]})
 			pts := arcToBezier(d.last, c, r, angle, largeArc, sweep)
 			d.addcmd('C', pts...)
 			d.lastc = d.last
-		}
-
-	case 'Z':
-		if d.first != d.last {
-			d.addcmd('L', d.first)
 		}
 	}
 }
 
 func (d *pathdecoder) addcmd(cmd byte, v ...Point) {
-	lasti := len(d.cmd) - 1
-	if cmd != 'M' && lasti >= 0 && d.cmd[lasti].Cmd == cmd {
+	previ := len(d.cmd) - 1
+	if cmd != 'M' && previ >= 0 && d.cmd[previ].Cmd == cmd {
 		// append coords to last command
-		lastc := &d.cmd[lasti]
-		lastc.Pt = append(lastc.Pt, v...)
+		prevc := &d.cmd[previ]
+		prevc.Pt = append(prevc.Pt, v...)
 	} else {
 		// add new command
 		d.cmd = append(d.cmd, PathCmd{
@@ -218,33 +201,32 @@ func (d *pathdecoder) addcmd(cmd byte, v ...Point) {
 
 	d.last = v[len(v)-1]
 
+	if cmd == 'M' {
+		d.first = d.last
+	}
+
 	if cmd == 'C' {
-		d.lastc = v[1]
+		d.lastc = v[len(v)-2]
 	} else {
 		d.lastc = d.last
 	}
 
 	if cmd == 'Q' {
-		d.lastq = v[0]
+		d.lastq = v[len(v)-2]
 	} else {
 		d.lastq = d.last
 	}
 }
 
-func (d *pathdecoder) line(v []Point, rel bool) {
+func (d *pathdecoder) line(v []Point, rel func(Point) Point) {
 	for _, p := range v {
-		var q Point
-		if rel {
-			d.last.X += p.X
-			d.last.Y += p.Y
-		} else {
-			q = p
-		}
-		d.addcmd('L', q)
+		d.addcmd('L', rel(p))
 	}
 }
 
-func (d *pathdecoder) cubicBézier(startp int, v []Point, rel bool) {
+func (d *pathdecoder) cubicBézier(startp int,
+	v []Point, rel func(Point) Point) {
+
 	if len(v)%3 != 0 {
 		d.seterrf("Invalid number of cubic Bézier coords at %d", startp)
 		return
@@ -252,23 +234,17 @@ func (d *pathdecoder) cubicBézier(startp int, v []Point, rel bool) {
 
 	for i := 0; i < len(v); i += 3 {
 		s := v[i : i+3]
-		var p1, p2, p3 Point
-		if rel {
-			p1.X = d.last.X + s[0].X
-			p1.Y = d.last.Y + s[0].Y
-			p2.X = d.last.X + s[1].X
-			p2.Y = d.last.Y + s[1].Y
-			p3.X = d.last.X + s[2].X
-			p3.Y = d.last.Y + s[2].Y
-		} else {
-			p1, p2, p3 = s[0], s[1], s[2]
-		}
+		p1 := rel(s[0])
+		p2 := rel(s[1])
+		p3 := rel(s[2])
 
 		d.addcmd('C', p1, p2, p3)
 	}
 }
 
-func (d *pathdecoder) quadraticBézier(startp int, v []Point, rel bool) {
+func (d *pathdecoder) quadraticBézier(startp int,
+	v []Point, rel func(Point) Point) {
+
 	if len(v)%2 != 0 {
 		d.seterrf("Invalid number of quadratic Bézier coords at %d", startp)
 		return
@@ -276,15 +252,8 @@ func (d *pathdecoder) quadraticBézier(startp int, v []Point, rel bool) {
 
 	for i := 0; i < len(v); i += 2 {
 		s := v[i : i+2]
-		var p1, p2 Point
-		if rel {
-			p1.X = d.last.X + s[0].X
-			p1.Y = d.last.Y + s[0].Y
-			p2.X = d.last.X + s[1].X
-			p2.Y = d.last.Y + s[1].Y
-		} else {
-			p1, p2 = s[0], s[1]
-		}
+		p1 := rel(s[0])
+		p2 := rel(s[1])
 
 		d.addcmd('Q', p1, p2)
 	}
@@ -305,7 +274,7 @@ func (d *pathdecoder) isnum() bool {
 	return isnumbyte(d.data[d.pos])
 }
 
-func (d *pathdecoder) nextcmd() (cmd byte, relative bool) {
+func (d *pathdecoder) nextcmd() (cmd byte, relflag bool) {
 	d.skipspace()
 
 	if d.pos == len(d.data) {
@@ -321,12 +290,12 @@ func (d *pathdecoder) nextcmd() (cmd byte, relative bool) {
 
 	d.pos++
 
-	relative = c >= 'a'
-	if relative {
+	relflag = c >= 'a'
+	if relflag {
 		c -= 'a' - 'A'
 	}
 
-	return c, relative
+	return c, relflag
 }
 
 func (d *pathdecoder) skipcomma() {

@@ -56,8 +56,9 @@ currently selected style (no stroke with solid fill for now).
 0x00       Stop - End program
 0x01       SetSolidFill <color> - Set solid fill color
 0x02..0x6f Reserved
-0x70       MoveTo <x> <y> - Move to position
-0x71..0x7f Reserved
+0x70       BeginMoveTo <x> <y> - Begin a new path at position
+0x71       MoveTo <x> <y> - Move to position
+0x72..0x7f Reserved
 
 0x80..0x9f LineTo <repct> (repct × <x> <y>)
 0xa0..0xaf CubicBezierTo <repct> (repct × <x1> <y1> <x2> <y2> <x3> <y3>)
