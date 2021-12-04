@@ -22,7 +22,7 @@ Packed icon image
 
 1x Icon header
 Nx Icon variant headers (N = NumImage in Icon header)
-Nx Icon variant images  (N = NumImage in Icon header)
+Nx Icon variant image data (N = NumImage in Icon header)
 
 Variant images are ordered in decreasing size (area) in the icon headers.
 
@@ -39,7 +39,7 @@ Icon variant header
 
 Width    [UINT16] suggested icon width in pixels
 Height   [UINT16] suggested icon height in pixels
-Offset   [UINT32] image data offset from end of icon variant headers
+ByteSize [UINT32] size of image data in bytes
 
 Icon variant image
 ------------------

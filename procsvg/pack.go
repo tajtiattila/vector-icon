@@ -24,7 +24,7 @@ func pack_project(project Project) error {
 		}
 
 		for _, fn := range svgs {
-			name := strings.TrimSuffix(fn, "*svg")
+			name := strings.TrimSuffix(fn, ".svg")
 			path := filepath.Join(dir, fn)
 			if cli.verbose {
 				fmt.Fprintf(os.Stderr, "Packing %s\n", path)
@@ -94,13 +94,11 @@ func (e *PackElem) dataBytes() []byte {
 
 	const ihbytes = 8
 	var ih [ihbytes]byte // image header
-	ofs := len(e.Image) * ihbytes
 	for _, im := range e.Image {
 		byteOrder.PutUint16(ih[0:], uint16(im.Width))
 		byteOrder.PutUint16(ih[2:], uint16(im.Height))
-		byteOrder.PutUint32(ih[4:], uint32(ofs))
+		byteOrder.PutUint32(ih[4:], uint32(len(im.Data)))
 		buf.Write(ih[:])
-		ofs += len(im.Data)
 	}
 
 	for _, im := range e.Image {
