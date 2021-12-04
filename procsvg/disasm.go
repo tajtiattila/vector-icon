@@ -131,7 +131,7 @@ func (r *ProgReader) Point() {
 	x, y := r.Coord(), r.Coord()
 	e := r.pos
 	dump := fmt.Sprintf("% 02x", r.data[s:e])
-	fmt.Fprintf(r.out, "%-24s   %f, %f\n", dump, x, y)
+	fmt.Fprintf(r.out, "%-24s   %8.4f  %8.4f\n", dump, x, y)
 }
 
 func (r *ProgReader) Coord() float64 {

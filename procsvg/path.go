@@ -182,6 +182,11 @@ func (d *pathdecoder) step() {
 			d.addcmd('C', pts...)
 			d.lastc = d.last
 		}
+
+	case 'Z':
+		d.last = d.first
+		d.lastc = d.last
+		d.lastq = d.last
 	}
 }
 
