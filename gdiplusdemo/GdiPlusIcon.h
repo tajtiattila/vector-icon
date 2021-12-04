@@ -17,6 +17,8 @@ public:
 	void DrawIconDirect(HDC hdc, RECT const* r, vectoricon::Icon const& icon);
 	void DrawIcon(HDC hdc, RECT const* r, vectoricon::Icon const& icon);
 
+	virtual void Colorize(uint8_t& r, uint8_t& g, uint8_t& b);
+
 	// vectoricon::DrawEngine overrides
 	void ViewBox(float xmin, float ymin, float xmax, float ymax) override;
 	void SetSolidFill(uint8_t r, uint8_t g, uint8_t b, uint8_t a) override;

@@ -7,7 +7,22 @@
 
 #include "GdiPlusIcon.h"
 
+#include <algorithm>
 #include <fstream>
+
+class ColorizerIconEngine : public GdiPlusIconEngine {
+public:
+	void Colorize(uint8_t &r, uint8_t &g, uint8_t &b) override;
+
+	void AdjustColor(int delta);
+
+	static constexpr COLORREF lightbk = RGB(192, 192, 192);
+	static constexpr COLORREF darkbk = RGB(64, 64, 64);
+
+	COLORREF bkcolor = lightbk;
+
+	size_t colorIdx = 0;
+};
 
 class Window {
 public:
@@ -17,7 +32,7 @@ public:
 	void OnPaint(HDC dc, int dx, int dy);
 
 	HWND hwnd;
-	GdiPlusIconEngine* eng;
+	ColorizerIconEngine* eng;
 	vectoricon::Pack pack;
 
 	size_t paintSizeIdx = 0;
@@ -86,7 +101,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
 
 	g_window.hwnd = hwnd;
-	g_window.eng = new GdiPlusIconEngine;
+	g_window.eng = new ColorizerIconEngine;
 
     ShowWindow(hwnd, nCmdShow);
 	UpdateWindow(hwnd);
@@ -143,40 +158,35 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 void Window::OnKeyDown(WPARAM w) {
 	switch (w) {
 
-	case 'J':
-		paintSizeIdx++;
-		if (paintSizeIdx >= paintSizes.size()) {
-			paintSizeIdx = 0;
-		}
-		Invalidate();
-		break;
-
-	case 'K':
+	case 'I':
 		paintSizeIdx--;
 		if (paintSizeIdx >= paintSizes.size()) {
 			paintSizeIdx = paintSizes.size() - 1;
 		}
-		Invalidate();
+		break;
+
+	case 'K':
+		paintSizeIdx++;
+		if (paintSizeIdx >= paintSizes.size()) {
+			paintSizeIdx = 0;
+		}
 		break;
 
 	case 'W':
-		debugPathIdx++;
-		Invalidate();
-		break;
-
-	case 'S':
 		if (debugPathIdx != 0) {
 			debugPathIdx--;
 		}
-		Invalidate();
+		break;
+
+	case 'S':
+		debugPathIdx++;
 		break;
 
 	case 'A':
 		singleIconIdx--;
 		if (singleIconIdx < 0) {
-			singleIconIdx = pack.size();
+			singleIconIdx = int(pack.size());
 		}
-		Invalidate();
 		break;
 
 	case 'D':
@@ -184,15 +194,153 @@ void Window::OnKeyDown(WPARAM w) {
 		if (singleIconIdx > pack.size()) {
 			singleIconIdx = 0;
 		}
-		Invalidate();
 		break;
+
+	case 'Q':
+		eng->AdjustColor(-1);
+		break;
+
+	case 'E':
+		eng->AdjustColor(1);
+		break;
+	}
+
+	Invalidate();
+}
+
+inline uint8_t truncb(int n) {
+	if (n < 0) return 0;
+	if (255 < n) return 255;
+	return (uint8_t)n;
+}
+
+uint8_t gray(uint8_t r, uint8_t g, uint8_t b) {
+	int ir = r;
+	int ig = g;
+	int ib = b;
+	//  Y' =   0 + (0.299    * R') + (0.587    * G') + (0.114    * B')
+	return truncb((ir * 19595 + ig * 38470 + ib * 7471) >> 16);
+}
+
+void ToHSL(float& h, float& s, float& l, uint8_t r0, uint8_t g0, uint8_t b0) {
+	float r = float(r0) / 255.f;
+	float g = float(g0) / 255.f;
+	float b = float(b0) / 255.f;
+
+	uint8_t cmax = (std::max)({r0, g0, b0});
+	uint8_t cmin = (std::min)({r0, g0, b0});
+	float delta = float(cmax - cmin) / 255.f;
+
+	if (cmax == cmin) {
+		h = 0;
+	} else if (cmax == r0) {
+		h = (g-b)/delta;
+		if (h < 0) {
+			h += 6.f;
+		}
+	} else if (cmax == g0) {
+		h = (b-r)/delta + 2.f;
+	} else { // cmax == b0
+		h = (r-g)/delta + 4.f;
+	}
+
+	int l0 = (int(cmin) + int(cmax));
+	l = (float(l0)/2) / 255.f;
+
+	if (l0 == 0 || l0 == 2*255) {
+		s = 0;
+	} else {
+		s = delta/(1.0f - std::fabs(2.f*l - 1.f));
 	}
 }
 
-void Window::OnPaint(HDC dc, int dx, int dy) {
-	COLORREF bkcolor = RGB(192, 192, 192);
+void FromHSL(uint8_t& r, uint8_t& g, uint8_t& b, float h, float s, float l) {
+	float c = (1.f-fabs(2.f*l-1.f))*s;
+	float x = c * (1.f-std::fabs(std::fmod(h, 2.f) - 1.f));
+	float m = l - c/2.f;
+	static constexpr float z = 0.f;
 
-	HBRUSH hbr = ::CreateSolidBrush(bkcolor);
+	std::tuple<float, float, float> fc;
+	int ih = int(floor(h));
+	switch (ih) {
+	case 0: fc = {c, x, z}; break;
+	case 1: fc = {x, c, z}; break;
+	case 2: fc = {z, c, x}; break;
+	case 3: fc = {z, x, c}; break;
+	case 4: fc = {x, z, c}; break;
+	case 5: fc = {c, z, x}; break;
+	}
+
+	r = uint8_t(floor((std::get<0>(fc) + m) * 255.f + 0.5f));
+	g = uint8_t(floor((std::get<1>(fc) + m) * 255.f + 0.5f));
+	b = uint8_t(floor((std::get<2>(fc) + m) * 255.f + 0.5f));
+}
+
+inline void ToYCbCr(uint8_t& y, uint8_t& cb, uint8_t& cr, uint8_t r, uint8_t g, uint8_t b) {
+	int ir = r;
+	int ig = g;
+	int ib = b;
+
+	//  Y' =   0 + (0.299    * R') + (0.587    * G') + (0.114    * B')
+	//  Cb = 128 - (0.168736 * R') - (0.331264 * G') + (0.5      * B')
+	//  Cr = 128 + (0.5      * R') - (0.418688 * G') - (0.081312 * B')
+	//
+	//  128.5 << 16 -> 257<<15
+	y  = truncb((ir * 19595 + ig * 38470 + ib * 7471) >> 16);
+	cb = truncb((-11056*ir - 21712*ig + 32768*ib + (257<<15)) >> 16);
+	cr = truncb((32768*ir - 27440*ig - 5328*ib + (257<<15)) >> 16);
+}
+
+inline void FromYCbCr(uint8_t& r, uint8_t& g, uint8_t& b, uint8_t y, uint8_t cb, uint8_t cr) {
+	//	R = Y' + 1.402   * (Cr-128)
+	//	G = Y' - 0.34414 * (Cb-128) - 0.71414 * (Cr-128)
+	//	B = Y' + 1.772   * (Cb-128)
+	int iy = (int(y)<<16) + (1<<15);
+	int icr = int(cr) - 128;
+	int icb = int(cb) - 128;
+	r = truncb((iy + 91881*icr) >> 16);
+	g = truncb((iy - 22554*icb - 46802*icr) >> 16);
+	b = truncb((iy + 116130*icb) >> 16);
+}
+
+void ColorizerIconEngine::AdjustColor(int delta) {
+	colorIdx = (colorIdx + delta) & 0x3;
+
+	if (colorIdx < 2) {
+		bkcolor = lightbk;
+	} else {
+		bkcolor = darkbk;
+	}
+}
+
+void ColorizerIconEngine::Colorize(uint8_t &r, uint8_t &g, uint8_t &b) {
+	if (colorIdx == 0) {
+		return;
+	}
+
+	if (colorIdx == 2) {
+		float h, s, l;
+		ToHSL(h, s, l, r, g, b);
+		l = 1.f - l;
+		FromHSL(r, g, b, h, s, l);
+		return;
+	}
+
+	uint8_t y = gray(r, g, b);
+
+	if (colorIdx == 1) {
+		y = 128 + y/4;
+	} else {
+		y = 64 + (255-y)/4;
+	}
+
+	r = y;
+	g = y;
+	b = y;
+}
+
+void Window::OnPaint(HDC dc, int dx, int dy) {
+	HBRUSH hbr = ::CreateSolidBrush(eng->bkcolor);
 	RECT rect{0, 0, dx, dy};
 	::FillRect(dc, &rect, hbr);
 	::DeleteObject(hbr);

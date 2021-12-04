@@ -92,7 +92,11 @@ void GdiPlusIconEngine::ViewBox(float xmin, float ymin, float xmax, float ymax) 
 	m_gr->SetTransform(&m);
 }
 
+void GdiPlusIconEngine::Colorize(uint8_t& /*r*/, uint8_t& /*g*/, uint8_t& /*b*/) {
+}
+
 void GdiPlusIconEngine::SetSolidFill(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+	Colorize(r, g, b);
 	m_solidBrush.SetColor(Gdiplus::Color(a, r, g, b));
 }
 
