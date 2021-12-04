@@ -31,7 +31,6 @@ public:
 private:
 	void DrawIconImpl(vectoricon::Icon const& icon);
 
-	void endPath();
 	std::pair<const Gdiplus::PointF*, INT>
 		convertPoints(std::vector<vectoricon::Point> const& pts);
 
@@ -46,7 +45,6 @@ private:
 	Gdiplus::GraphicsPath m_path;
 
 	vectoricon::Point m_cursor = {0.f, 0.f};
-	vectoricon::Point m_startp = {0.f, 0.f};
 	bool m_hasPath = false;
 	std::vector<Gdiplus::PointF> m_ptbuf;
 

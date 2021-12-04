@@ -97,10 +97,12 @@ void GdiPlusIconEngine::SetSolidFill(uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 }
 
 void GdiPlusIconEngine::MoveTo(vectoricon::Point p) {
-	endPath();
+	if (m_hasPath) {
+		m_path.CloseFigure();
+	}
+	m_path.StartFigure();
 
 	m_cursor = p;
-	m_startp = p;
 }
 
 void GdiPlusIconEngine::LineTo(std::vector<vectoricon::Point> const& p) {
@@ -157,9 +159,14 @@ void GdiPlusIconEngine::QuadraticBezierTo(std::vector<vectoricon::Point> const& 
 }
 
 void GdiPlusIconEngine::ClosePath() {
-	endPath();
+	m_path.CloseFigure();
 
 	if (m_hasPath) {
+		if (m_currentPathIdx == m_debugPathIdx) {
+			Gdiplus::PathData pd;
+			m_path.GetPathData(&pd);
+		}
+
 		if (m_debugPathIdx == 0 || m_currentPathIdx == m_debugPathIdx) {
 			m_gr->FillPath(&m_solidBrush, &m_path);
 		}
@@ -170,12 +177,6 @@ void GdiPlusIconEngine::ClosePath() {
 	m_path.Reset();
 
 	m_hasPath = false;
-}
-
-void GdiPlusIconEngine::endPath() {
-	if (m_hasPath && (m_cursor.x != m_startp.x || m_cursor.y != m_startp.y)) {
-		m_path.AddLine(m_cursor.x, m_cursor.y, m_startp.x, m_startp.y);
-	}
 }
 
 std::pair<const Gdiplus::PointF*, INT>
