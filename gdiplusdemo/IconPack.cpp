@@ -119,6 +119,13 @@ const Icon* Pack::find(std::string const& name) const {
 
 namespace detail {
 
+float floatFromBits(uint32_t u) {
+	float v;
+	static_assert(sizeof(u) == sizeof(v), "float and uint32_t sizes differ");
+	memcpy(&v, &u, sizeof(u));
+	return v;
+}
+
 class ProgMem {
 public:
 	ProgMem(const uint8_t* p, const uint8_t* end) :
@@ -142,27 +149,28 @@ public:
 		}
 
 		uint8_t b0 = byte();
-		if ((b0 & 0x80) == 0) {
-			return float(int(b0) + 64);
+		if ((b0 & 0x01) != 0) {
+			return float(int(b0>>1) - 64);
 		}
-
-		b0 &= 0x7f;
 
 		uint8_t b1 = byte();
-		if ((b1 & 0x80) == 0) {
-			return float(int(b0) | (int(b1) << 7)) / 64;
+		if ((b0 & 0x02) != 0) {
+			uint16_t u = uint16_t(b0) | (uint16_t(b1) << 8);
+			return float((int(u >> 2)) - 128*64) / 64;
 		}
 
-		b1 &= 0x7f;
+		float flt = 1.0f;
+		uint8_t buf[4];
+		memcpy(buf, &flt, 4);
 
 		uint8_t b2 = byte();
 		uint8_t b3 = byte();
 		uint32_t v =
-			(uint32_t(b0)<<2) |
-			(uint32_t(b1)<<9) |
+			(uint32_t(b0)) |
+			(uint32_t(b1)<<8) |
 			(uint32_t(b2)<<16) |
-			(uint32_t(b2)<<24);
-		return float(*(float*)&v);
+			(uint32_t(b3)<<24);
+		return floatFromBits(v);
 	}
 
 	Point point() {

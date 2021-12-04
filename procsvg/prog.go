@@ -118,7 +118,7 @@ func CoordBytes(p []byte, v, prec float64) int {
 	}
 
 	if i := math.Round(v); math.Abs(v-i) <= prec && i >= -64 && i < 64 {
-		p[0] = byte(int(i) + 64)
+		p[0] = (byte(int(i)+64) << 1) | 0x01
 		return 1
 	}
 
@@ -127,9 +127,9 @@ func CoordBytes(p []byte, v, prec float64) int {
 	}
 
 	if n := rd64(v); math.Abs(v-n) <= prec && n >= -128 && n < 128 {
-		x := int(n*64) + (128 * 64)
-		p[0] = byte(x) | 0x80
-		p[1] = byte(x >> 7)
+		x := (uint16(int(n*64)+(128*64)) << 2) | 0x02
+		p[0] = byte(x)
+		p[1] = byte(x >> 8)
 		return 2
 	}
 
@@ -138,8 +138,8 @@ func CoordBytes(p []byte, v, prec float64) int {
 	}
 
 	bits := math.Float32bits(float32(v))
-	p[0] = byte(bits>>2) | 0x80
-	p[1] = byte(bits>>9) | 0x80
+	p[0] = byte(bits) & ^byte(0x03)
+	p[1] = byte(bits >> 8)
 	p[2] = byte(bits >> 16)
 	p[3] = byte(bits >> 24)
 
@@ -158,12 +158,17 @@ func CoordFromBytes(p []byte) (v float64, n int) {
 		return 0, 0
 	}
 
-	if (p[0] & 0x80) == 0 {
-		return float64(int(p[0]) - 64), 1
+	if (p[0] & 0x01) != 0 {
+		return float64(int(p[0]>>1) - 64), 1
 	}
 
-	if len(p) >= 2 && (p[1]&0x80) == 0 {
-		x := ((int(p[1]) << 7) | int(p[0]&0x7f)) - (128 * 64)
+	if len(p) < 2 {
+		return 0, 0
+	}
+
+	if (p[0] & 0x02) != 0 {
+		u := uint16(p[0]) | (uint16(p[1]) << 8)
+		x := int(u>>2) - (128 * 64)
 		return float64(x) / 64, 2
 	}
 
@@ -172,8 +177,8 @@ func CoordFromBytes(p []byte) (v float64, n int) {
 	}
 
 	var bits uint32
-	bits |= uint32(p[0]&0x7f) << 2
-	bits |= uint32(p[1]&0x7f) << 9
+	bits |= uint32(p[0]) << 0
+	bits |= uint32(p[1]) << 8
 	bits |= uint32(p[2]) << 16
 	bits |= uint32(p[3]) << 24
 
