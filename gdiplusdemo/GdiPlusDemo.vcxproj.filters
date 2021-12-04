@@ -15,16 +15,16 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="paint.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="GdiPlusIcon.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="IconPack.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="window.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -32,13 +32,13 @@
     <None Include="README.md" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="sys.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="GdiPlusIcon.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="IconPack.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="window.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

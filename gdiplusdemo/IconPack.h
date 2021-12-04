@@ -20,9 +20,7 @@ struct Icon {
 
 class Pack {
 public:
-	using IStream = std::basic_istream<uint8_t>;
-
-	bool load(IStream& strm);
+	bool load(std::istream& strm);
 
 	auto begin() const { return icons_.begin(); }
 	auto end()   const { return icons_.end(); }

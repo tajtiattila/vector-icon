@@ -7,22 +7,22 @@ namespace vectoricon {
 
 namespace detail {
 
-uint32_t readUint32(Pack::IStream& strm) {
+uint32_t readUint32(std::istream& strm) {
 	uint8_t b[4];
-	strm.read(b, 4);
+	strm.read((char*)b, 4);
 
 	return (uint32_t(b[3]) << 24) | (uint32_t(b[2]) << 16) |
 		(uint32_t(b[1]) << 8) | uint32_t(b[0]);
 }
 
-uint16_t readUint16(Pack::IStream& strm) {
+uint16_t readUint16(std::istream& strm) {
 	uint8_t b[2];
-	strm.read(b, 2);
+	strm.read((char*)b, 2);
 
 	return (uint16_t(b[1]) << 8) | uint16_t(b[0]);
 }
 
-std::optional<Icon> loadIcon(Pack::IStream& strm) {
+std::optional<Icon> loadIcon(std::istream& strm) {
 	size_t fileSize = readUint32(strm);
 
 	if (fileSize > 1<<20) { // 1M
@@ -34,14 +34,14 @@ std::optional<Icon> loadIcon(Pack::IStream& strm) {
 		return std::nullopt;
 	}
 
-	uint8_t nameBuf[256];
+	char nameBuf[256];
 	strm.read(nameBuf, nameLen);
 	if (!strm.good()) {
 		return std::nullopt;
 	}
 
 	Icon icon;
-	icon.name = std::string((char*)nameBuf, size_t(nameLen));
+	icon.name = std::string(nameBuf, size_t(nameLen));
 
 	uint8_t numImages = (uint8_t)strm.get();
 	if (!strm.good() || numImages == 0) {
@@ -49,12 +49,15 @@ std::optional<Icon> loadIcon(Pack::IStream& strm) {
 	}
 
 	icon.images.reserve(numImages);
+	uint32_t ofs = 0;
 	for (uint8_t i = 0; i < numImages; i++) {
 		RawImage ri;
 		ri.dx = readUint16(strm);
 		ri.dy = readUint16(strm);
-		ri.offset = readUint32(strm);
+		ri.offset = ofs;
 		icon.images.push_back(ri);
+
+		ofs += readUint32(strm);
 	}
 
 	if (!strm.good()) {
@@ -65,7 +68,7 @@ std::optional<Icon> loadIcon(Pack::IStream& strm) {
 	size_t dataBytes = fileSize - headerLen;
 
 	icon.data.resize(dataBytes);
-	strm.read(icon.data.data(), dataBytes);
+	strm.read((char*)icon.data.data(), dataBytes);
 
 	if (!strm.good()) {
 		return std::nullopt;
@@ -76,9 +79,9 @@ std::optional<Icon> loadIcon(Pack::IStream& strm) {
 
 } // end namespace detail
 
-bool Pack::load(IStream& strm) {
+bool Pack::load(std::istream& strm) {
 	char buf[4];
-	strm.read((uint8_t*)buf, 4);
+	strm.read(buf, 4);
 
 	if (memcmp(buf, "icpk", 4) != 0) {
 		return false;

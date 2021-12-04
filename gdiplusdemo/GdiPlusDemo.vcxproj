@@ -150,7 +150,7 @@
     <ClCompile Include="GdiPlusIcon.cpp" />
     <ClCompile Include="IconPack.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="paint.cpp" />
+    <ClCompile Include="window.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" />
@@ -158,7 +158,7 @@
   <ItemGroup>
     <ClInclude Include="GdiPlusIcon.h" />
     <ClInclude Include="IconPack.h" />
-    <ClInclude Include="sys.h" />
+    <ClInclude Include="window.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

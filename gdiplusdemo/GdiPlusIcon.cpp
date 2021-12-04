@@ -1,5 +1,8 @@
 #include "GdiPlusIcon.h"
 
+#pragma comment (lib, "Gdiplus.lib")
+#pragma comment (lib, "Msimg32.lib") // AlphaBlend
+
 GdiPlusIconEngine::GdiPlusIconEngine() :
 	m_bitmap(256, 256, PixelFormat32bppPARGB),
 	m_graphics(&m_bitmap),
@@ -36,8 +39,12 @@ void GdiPlusIconEngine::DrawIcon(HDC hdc, RECT const* rr, vectoricon::Icon const
 	bf.SourceConstantAlpha = 255;
 	bf.AlphaFormat = AC_SRC_ALPHA;
 
+	HDC hdcgr = m_graphics.GetHDC();
+
 	::AlphaBlend(hdc, r.left, r.top, m_dx, m_dy,
-			m_graphics.GetHDC(), 0, 0, m_dx, m_dy, bf);
+			hdcgr, 0, 0, m_dx, m_dy, bf);
+
+	m_graphics.ReleaseHDC(hdcgr);
 }
 
 void GdiPlusIconEngine::ViewBox(float xmin, float ymin, float xmax, float ymax) {

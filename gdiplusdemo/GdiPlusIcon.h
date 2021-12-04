@@ -3,6 +3,8 @@
 
 #include <windows.h>
 
+#include <objidl.h>
+
 #define GDIPVER 0x0110 // Windows Vista or later
 #include <Gdiplus.h>
 
