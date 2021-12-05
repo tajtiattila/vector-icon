@@ -40,6 +40,7 @@ public:
 
 	int debugPathIdx = 0;
 	int singleIconIdx = 0;
+	bool brushPattern = false;
 };
 
 std::vector<int> Window::paintSizes = {16, 20, 24, 28, 32, 48, 64, 128};
@@ -157,6 +158,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
 void Window::OnKeyDown(WPARAM w) {
 	switch (w) {
+
+	case 'B':
+		brushPattern = !brushPattern;
+		break;
 
 	case 'I':
 		paintSizeIdx--;
@@ -340,10 +345,18 @@ void ColorizerIconEngine::Colorize(uint8_t &r, uint8_t &g, uint8_t &b) {
 }
 
 void Window::OnPaint(HDC dc, int dx, int dy) {
-	HBRUSH hbr = ::CreateSolidBrush(eng->bkcolor);
 	RECT rect{0, 0, dx, dy};
-	::FillRect(dc, &rect, hbr);
-	::DeleteObject(hbr);
+
+	if (brushPattern) {
+		::SetBkColor(dc, eng->bkcolor);
+		HBRUSH hbr = ::CreateHatchBrush(HS_DIAGCROSS, RGB(128, 128, 128));
+		::FillRect(dc, &rect, hbr);
+		::DeleteObject(hbr);
+	} else {
+		HBRUSH hbr = ::CreateSolidBrush(eng->bkcolor);
+		::FillRect(dc, &rect, hbr);
+		::DeleteObject(hbr);
+	}
 
 	static constexpr int pad = 8;
 	int x = pad, y = pad;
