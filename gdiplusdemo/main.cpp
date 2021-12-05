@@ -5,6 +5,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include "color.h"
 #include "GdiPlusIcon.h"
 
 #include <algorithm>
@@ -19,7 +20,7 @@ public:
 
 	bool darkMode = false;
 	bool grayMode = false;
-	bool ycbcrColorMode = false;
+	int colorMode = 0;
 };
 
 class Window {
@@ -200,7 +201,7 @@ void Window::OnKeyDown(WPARAM w) {
 		break;
 
 	case 'R':
-		eng->ycbcrColorMode = !eng->ycbcrColorMode;
+		eng->colorMode = (eng->colorMode + 1) % 3;
 		break;
 
 	case 'Q':
@@ -316,16 +317,36 @@ void ColorizerIconEngine::Colorize(uint8_t &r, uint8_t &g, uint8_t &b) {
 			return;
 		}
 
-		if (ycbcrColorMode) {
-			uint8_t y, cb, cr;
-			ToYCbCr(y, cb, cr, r, g, b);
-			y = 255-y;
-			FromYCbCr(r, g, b, y, cb, cr);
-		} else {
+		switch (colorMode) {
+
+		case 0: { // HSL
 			float h, s, l;
 			ToHSL(h, s, l, r, g, b);
 			l = 1.f - l;
 			FromHSL(r, g, b, h, s, l);
+			break;
+		}
+
+		case 1: { // Y'CbCr
+			uint8_t y, cb, cr;
+			ToYCbCr(y, cb, cr, r, g, b);
+			y = 255-y;
+			FromYCbCr(r, g, b, y, cb, cr);
+			break;
+		}
+
+		case 2: { // CIE-L*ab
+			colorspace::sRGB s{r, g, b};
+			auto c = colorspace::Lab::from(s);
+
+			c.L = 100.0 - c.L;
+
+			s = colorspace::sRGB::from(c);
+			r = s.r;
+			g = s.g;
+			b = s.b;
+		}
+
 		}
 		return;
 	}
