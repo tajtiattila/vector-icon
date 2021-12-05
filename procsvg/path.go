@@ -190,6 +190,13 @@ func (d *pathdecoder) step() {
 	}
 }
 
+func (d *pathdecoder) ellipticArc(rx, ry, angle float64, largeArc, sweep bool, p2 Point) {
+	p1 := d.last
+	if p1 == p2 {
+		return
+	}
+}
+
 func (d *pathdecoder) addcmd(cmd byte, v ...Point) {
 	previ := len(d.cmd) - 1
 	if cmd != 'M' && previ >= 0 && d.cmd[previ].Cmd == cmd {

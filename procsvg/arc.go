@@ -34,14 +34,14 @@ func arcToBezier(p, c, r Point, xAxisRot float64, largeArc, sweep bool) []Point 
 		ry *= sqrtλ
 	}
 
-	centerx, centery, ang1, ang2 := getArcCenter(px, py, cx, cy, rx, ry,
+	centerx, centery, θ1, dθ := getArcCenter(px, py, cx, cy, rx, ry,
 		largeArc, sweep, sinφ, cosφ, pxp, pyp)
 
-	// If 'ang2' == 90.0000000001, then `ratio` will evaluate to
+	// If 'dθ' == 90.0000000001, then `ratio` will evaluate to
 	// 1.0000000001. This causes `segments` to be greater than one, which is an
 	// unecessary split, and adds extra points to the bezier curve. To alleviate
 	// this issue, we round to 1.0 when the ratio is close to 1.0.
-	ratio := math.Abs(ang2) / (τ / 4)
+	ratio := math.Abs(dθ) / (τ / 4)
 	if math.Abs(1.0-ratio) < 0.0000001 {
 		ratio = 1.0
 	}
@@ -51,45 +51,46 @@ func arcToBezier(p, c, r Point, xAxisRot float64, largeArc, sweep bool) []Point 
 		nseg = 1
 	}
 
-	ang2 /= float64(nseg)
+	dθ /= float64(nseg)
 
 	var pts []Point
 
 	for i := 0; i < nseg; i++ {
-		curve := approxUnitArc(ang1, ang2)
+		curve := approxUnitArc(θ1, dθ)
 
 		for _, c := range curve {
 			pts = append(pts, mapToEllipse(c, rx, ry, cosφ, sinφ, centerx, centery))
 		}
 
-		ang1 += ang2
+		θ1 += dθ
 	}
 
 	return pts
 }
 
 func getArcCenter(px, py, cx, cy, rx, ry float64, largeArc, sweep bool,
-	sinφ, cosφ, pxp, pyp float64) (centerx, centery, ang1, ang2 float64) {
+	sinφ, cosφ, pxp, pyp float64) (centerx, centery, θ1, dθ float64) {
 
 	rxsq := sq(rx)
 	rysq := sq(ry)
 	pxpsq := sq(pxp)
 	pypsq := sq(pyp)
 
-	radicant := (rxsq * rysq) - (rxsq * pypsq) - (rysq * pxpsq)
+	radicand := (rxsq * rysq) - (rxsq * pypsq) - (rysq * pxpsq)
 
-	if radicant < 0 {
-		radicant = 0
+	if radicand < 0 {
+		radicand = 0
+	} else {
+		radicand /= (rxsq * pypsq) + (rysq * pxpsq)
+		radicand = math.Sqrt(radicand)
 	}
 
-	radicant /= (rxsq * pypsq) + (rysq * pxpsq)
-	radicant = math.Sqrt(radicant)
 	if largeArc == sweep {
-		radicant *= -1
+		radicand *= -1
 	}
 
-	centerxp := radicant * rx / ry * pyp
-	centeryp := radicant * -ry / rx * pxp
+	centerxp := radicand * rx / ry * pyp
+	centeryp := radicand * -ry / rx * pxp
 
 	centerx = cosφ*centerxp - sinφ*centeryp + (px+cx)/2
 	centery = sinφ*centerxp + cosφ*centeryp + (py+cy)/2
@@ -99,18 +100,18 @@ func getArcCenter(px, py, cx, cy, rx, ry float64, largeArc, sweep bool,
 	vx2 := (-pxp - centerxp) / rx
 	vy2 := (-pyp - centeryp) / ry
 
-	ang1 = vectorAngle(1, 0, vx1, vy1)
-	ang2 = vectorAngle(vx1, vy1, vx2, vy2)
+	θ1 = vectorAngle(1, 0, vx1, vy1)
+	dθ = vectorAngle(vx1, vy1, vx2, vy2)
 
-	if !sweep && ang2 > 0 {
-		ang2 -= τ
+	if !sweep && dθ > 0 {
+		dθ -= τ
 	}
 
-	if sweep && ang2 < 0 {
-		ang2 += τ
+	if sweep && dθ < 0 {
+		dθ += τ
 	}
 
-	return centerx, centery, ang1, ang2
+	return centerx, centery, θ1, dθ
 }
 
 func vectorAngle(ux, uy, vx, vy float64) float64 {
@@ -134,23 +135,25 @@ func vectorAngle(ux, uy, vx, vy float64) float64 {
 	return sign * math.Acos(dot)
 }
 
-func approxUnitArc(ang1, ang2 float64) []Point {
+func approxUnitArc(θ1, dθ float64) []Point {
 
 	// For 90° a circular arc, use a constant as derived from
 	// http://spencermortensen.com/articles/bezier-circle
 	var a float64
-	if ang2 == math.Pi/2 {
-		a = 0.551915024494
-	} else if ang2 == -math.Pi/2 {
-		a = -0.551915024494
+	const chalfpi = 0.551915024494
+	if dθ == math.Pi/2 {
+		a = chalfpi
+	} else if dθ == -math.Pi/2 {
+		a = -chalfpi
 	} else {
-		a = 4 / 3 * math.Tan(ang2/4)
+		at := math.Tan(dθ / 2)
+		a = math.Sin(dθ) * (math.Sqrt(4+3*at*at) - 1) / 3
 	}
 
-	x1 := math.Cos(ang1)
-	y1 := math.Sin(ang1)
-	x2 := math.Cos(ang1 + ang2)
-	y2 := math.Sin(ang1 + ang2)
+	x1 := math.Cos(θ1)
+	y1 := math.Sin(θ1)
+	x2 := math.Cos(θ1 + dθ)
+	y2 := math.Sin(θ1 + dθ)
 
 	return []Point{
 		{
