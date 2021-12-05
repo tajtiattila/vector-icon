@@ -14,14 +14,12 @@ class ColorizerIconEngine : public GdiPlusIconEngine {
 public:
 	void Colorize(uint8_t &r, uint8_t &g, uint8_t &b) override;
 
-	void AdjustColor(int delta);
-
 	static constexpr COLORREF lightbk = RGB(192, 192, 192);
 	static constexpr COLORREF darkbk = RGB(64, 64, 64);
 
-	COLORREF bkcolor = lightbk;
-
-	size_t colorIdx = 0;
+	bool darkMode = false;
+	bool grayMode = false;
+	bool ycbcrColorMode = false;
 };
 
 class Window {
@@ -201,12 +199,16 @@ void Window::OnKeyDown(WPARAM w) {
 		}
 		break;
 
+	case 'R':
+		eng->ycbcrColorMode = !eng->ycbcrColorMode;
+		break;
+
 	case 'Q':
-		eng->AdjustColor(-1);
+		eng->darkMode = !eng->darkMode;
 		break;
 
 	case 'E':
-		eng->AdjustColor(1);
+		eng->grayMode = !eng->grayMode;
 		break;
 	}
 
@@ -308,32 +310,29 @@ inline void FromYCbCr(uint8_t& r, uint8_t& g, uint8_t& b, uint8_t y, uint8_t cb,
 	b = truncb((iy + 116130*icb) >> 16);
 }
 
-void ColorizerIconEngine::AdjustColor(int delta) {
-	colorIdx = (colorIdx + delta) & 0x3;
-
-	if (colorIdx < 2) {
-		bkcolor = lightbk;
-	} else {
-		bkcolor = darkbk;
-	}
-}
-
 void ColorizerIconEngine::Colorize(uint8_t &r, uint8_t &g, uint8_t &b) {
-	if (colorIdx == 0) {
-		return;
-	}
+	if (!grayMode) {
+		if (!darkMode) {
+			return;
+		}
 
-	if (colorIdx == 2) {
-		float h, s, l;
-		ToHSL(h, s, l, r, g, b);
-		l = 1.f - l;
-		FromHSL(r, g, b, h, s, l);
+		if (ycbcrColorMode) {
+			uint8_t y, cb, cr;
+			ToYCbCr(y, cb, cr, r, g, b);
+			y = 255-y;
+			FromYCbCr(r, g, b, y, cb, cr);
+		} else {
+			float h, s, l;
+			ToHSL(h, s, l, r, g, b);
+			l = 1.f - l;
+			FromHSL(r, g, b, h, s, l);
+		}
 		return;
 	}
 
 	uint8_t y = gray(r, g, b);
 
-	if (colorIdx == 1) {
+	if (!darkMode) {
 		y = 128 + y/4;
 	} else {
 		y = 64 + (255-y)/4;
@@ -347,13 +346,14 @@ void ColorizerIconEngine::Colorize(uint8_t &r, uint8_t &g, uint8_t &b) {
 void Window::OnPaint(HDC dc, int dx, int dy) {
 	RECT rect{0, 0, dx, dy};
 
+	COLORREF bkcolor = eng->darkMode ? eng->darkbk : eng->lightbk;
 	if (brushPattern) {
-		::SetBkColor(dc, eng->bkcolor);
+		::SetBkColor(dc, bkcolor);
 		HBRUSH hbr = ::CreateHatchBrush(HS_DIAGCROSS, RGB(128, 128, 128));
 		::FillRect(dc, &rect, hbr);
 		::DeleteObject(hbr);
 	} else {
-		HBRUSH hbr = ::CreateSolidBrush(eng->bkcolor);
+		HBRUSH hbr = ::CreateSolidBrush(bkcolor);
 		::FillRect(dc, &rect, hbr);
 		::DeleteObject(hbr);
 	}
