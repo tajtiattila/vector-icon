@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"image/color"
 	"io"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ var byteOrder = binary.LittleEndian
 
 func pack_project(project Project) error {
 	m := make(map[string][]*ProgImage)
+	mcol := make(map[color.NRGBA]struct{})
 	for _, sub := range project.SizeDirs {
 		sdir := filepath.Join(project.IconDir, sub)
 		dir := filepath.Join(project.IntermediateDir, sub)
@@ -29,11 +31,15 @@ func pack_project(project Project) error {
 			if cli.verbose {
 				fmt.Fprintf(os.Stderr, "Packing %s\n", path)
 			}
-			x, err := ConvertSvg(path, project.Epsilon)
+			x, colors, err := ConvertSvg(path, project.Epsilon)
 			if err != nil {
 				return fmt.Errorf("error converting %s: %w", path, err)
 			}
 			m[name] = append(m[name], x)
+
+			for _, c := range colors {
+				mcol[c] = struct{}{}
+			}
 		}
 	}
 
@@ -64,6 +70,28 @@ func pack_project(project Project) error {
 			return err
 		}
 		defer fa.Close()
+
+		var vcol []color.NRGBA
+		for c := range mcol {
+			vcol = append(vcol, c)
+		}
+		sort.Slice(vcol, func(i, j int) bool {
+			ci := vcol[i]
+			cj := vcol[j]
+			if ci.R != cj.R {
+				return ci.R < cj.R
+			}
+			if ci.G != cj.G {
+				return ci.G < cj.G
+			}
+			return ci.B < cj.B
+		})
+
+		fmt.Fprintln(fa, "# image colors:")
+		for _, c := range vcol {
+			fmt.Fprintf(fa, "# %02x%02x%02x\n", c.R, c.G, c.B)
+		}
+		fmt.Fprintln(fa)
 
 		pr, pw := io.Pipe()
 		go func() {

@@ -10,16 +10,16 @@ import (
 	"strings"
 )
 
-func ConvertSvg(fn string, precision float64) (*ProgImage, error) {
+func ConvertSvg(fn string, precision float64) (*ProgImage, []color.NRGBA, error) {
 	f, err := os.Open(fn)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer f.Close()
 
 	svg, err := xmlTree(f)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	//pathSort(svg)
 
@@ -27,7 +27,7 @@ func ConvertSvg(fn string, precision float64) (*ProgImage, error) {
 	g.mem.Precision = precision
 	g.tree(svg)
 
-	return g.finish(), nil
+	return g.finish(), g.colors, nil
 }
 
 type Node struct {
@@ -103,6 +103,8 @@ type svgprog struct {
 	fn  string
 	im  *ProgImage
 	mem ProgMem
+
+	colors []color.NRGBA
 }
 
 func (g *svgprog) finish() *ProgImage {
@@ -206,6 +208,9 @@ func (g *svgprog) handle_fill(n Node) error {
 	if !ok {
 		return fmt.Errorf("can't find fill style")
 	}
+
+	cn := color.NRGBAModel.Convert(c).(color.NRGBA)
+	g.colors = append(g.colors, cn)
 
 	g.mem.Byte(0x01)
 	g.mem.Color(c)

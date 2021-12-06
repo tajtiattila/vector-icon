@@ -200,16 +200,16 @@ void Window::OnKeyDown(WPARAM w) {
 		}
 		break;
 
-	case 'R':
-		eng->colorMode = (eng->colorMode + 1) % 3;
-		break;
-
 	case 'Q':
-		eng->darkMode = !eng->darkMode;
+		eng->grayMode = !eng->grayMode;
 		break;
 
 	case 'E':
-		eng->grayMode = !eng->grayMode;
+		eng->darkMode = !eng->darkMode;
+		break;
+
+	case 'R':
+		eng->colorMode = (eng->colorMode + 1) % 3;
 		break;
 	}
 
