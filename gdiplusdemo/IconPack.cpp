@@ -2,6 +2,7 @@
 #include "IconPack.h"
 
 #include <optional>
+#include <sstream>
 
 namespace vectoricon {
 
@@ -10,6 +11,10 @@ namespace detail {
 uint32_t readUint32(std::istream& strm) {
 	uint8_t b[4];
 	strm.read((char*)b, 4);
+
+	if (!strm.good() || strm.gcount() != 4) {
+		strm.setstate(strm.failbit);
+	}
 
 	return (uint32_t(b[3]) << 24) | (uint32_t(b[2]) << 16) |
 		(uint32_t(b[1]) << 8) | uint32_t(b[0]);
@@ -22,13 +27,80 @@ uint16_t readUint16(std::istream& strm) {
 	return (uint16_t(b[1]) << 8) | uint16_t(b[0]);
 }
 
-std::optional<Icon> loadIcon(std::istream& strm) {
-	size_t fileSize = readUint32(strm);
+struct SectionHeader {
+	char magic[4];
+	uint32_t size;
+};
 
-	if (fileSize > 1<<20) { // 1M
+std::optional<SectionHeader> readSectionHeader(std::istream& strm) {
+	SectionHeader sh;
+	strm.read(sh.magic, 4);
+	if (strm.eof() && strm.gcount() == 0) {
+		strm.clear(strm.goodbit | strm.eofbit);
 		return std::nullopt;
 	}
 
+	if (strm.gcount() != 4) {
+		strm.setstate(strm.failbit);
+		return std::nullopt;
+	}
+
+	sh.size = readUint32(strm);
+	if (!strm.good()) {
+		return std::nullopt;
+	}
+
+	return sh;
+}
+
+bool loadPalette(std::istream& strm, size_t sectSize, 
+		std::shared_ptr<PaletteVector>& /*in-out*/ pv) {
+	uint8_t buf[4];
+	strm.read((char*)&buf, 2);
+	if (!strm.good()) {
+		return false;
+	}
+
+	size_t idx = buf[0];
+	size_t count = buf[1];
+	if (2 + 4*count != sectSize) {
+		// invalid palette size
+		return false;
+	}
+
+	if (count == 0) {
+		// empty palette
+		return true;
+	}
+
+	if (pv == nullptr) {
+		pv = std::make_shared<PaletteVector>();
+	}
+
+	auto& v = *pv;
+	if (v.size() <= idx) {
+		v.resize(idx+1);
+	}
+
+	auto& palette = v[idx];
+	palette.resize(count);
+	for (auto &c : palette) {
+		strm.read((char*)&buf, 4);
+		if (!strm.good()) {
+			return false;
+		}
+
+		c.r = buf[0];
+		c.g = buf[1];
+		c.b = buf[2];
+		c.a = buf[3];
+	}
+
+	return true;
+}
+
+std::optional<Icon> loadIcon(std::istream& strm, size_t sectSize,
+		std::shared_ptr<PaletteVector> const& pv) {
 	uint8_t nameLen = (uint8_t)strm.get();
 	if (!strm.good() || nameLen == 0) {
 		return std::nullopt;
@@ -40,8 +112,11 @@ std::optional<Icon> loadIcon(std::istream& strm) {
 		return std::nullopt;
 	}
 
-	Icon icon;
+	auto icondata = std::make_shared<IconData>();
+	auto& icon = *icondata;
+
 	icon.name = std::string(nameBuf, size_t(nameLen));
+	icon.palvec = pv;
 
 	uint8_t numImages = (uint8_t)strm.get();
 	if (!strm.good() || numImages == 0) {
@@ -68,7 +143,7 @@ std::optional<Icon> loadIcon(std::istream& strm) {
 	}
 
 	size_t headerLen = 1 + size_t(nameLen) + 1 + 8*numImages;
-	size_t dataBytes = fileSize - headerLen;
+	size_t dataBytes = sectSize - headerLen;
 
 	icon.data.resize(dataBytes);
 	strm.read((char*)icon.data.data(), dataBytes);
@@ -77,7 +152,7 @@ std::optional<Icon> loadIcon(std::istream& strm) {
 		return std::nullopt;
 	}
 
-	return icon;
+	return Icon(icondata);
 }
 
 } // end namespace detail
@@ -91,16 +166,34 @@ bool Pack::load(std::istream& strm) {
 	}
 
 	uint32_t nicons = detail::readUint32(strm);
+	icons_.reserve(icons_.size() + nicons);
 
-	for (uint32_t i = 0; i < nicons; i++) {
-		std::optional<Icon> x = detail::loadIcon(strm);
-		if (!x.has_value() || !strm.good()) {
-			return false;
+	std::shared_ptr<PaletteVector> pv;
+	while (!strm.eof()) {
+		auto oh = detail::readSectionHeader(strm);
+		if (!oh.has_value()) {
+			return strm.eof() && !strm.fail();
 		}
 
-		size_t idx = icons_.size();
-		icons_.push_back(std::move(*x));
-		nameToIndex_.insert({x->name, idx});
+		auto& h = *oh;
+
+		if (memcmp(h.magic, "PALT", 4) == 0) {
+			if (!detail::loadPalette(strm, h.size, pv)) {
+				return false;
+			}
+		} else if (memcmp(h.magic, "ICON", 4) == 0) {
+			std::optional<Icon> x = detail::loadIcon(strm, h.size, pv);
+			if (!x.has_value() || !strm.good()) {
+				return false;
+			}
+
+			size_t idx = icons_.size();
+			icons_.push_back(std::move(*x));
+			nameToIndex_.insert({icons_.back().Name(), idx});
+		} else {
+			// skip unknown section
+			strm.seekg(h.size, strm.cur);
+		}
 	}
 
 	return true;
@@ -132,7 +225,11 @@ float floatFromBits(uint32_t u) {
 class ProgMem {
 public:
 	ProgMem(const uint8_t* p, const uint8_t* end) :
-		p(p), end(end) {
+		start(p), p(p), end(end) {
+	}
+
+	size_t pos() const {
+		return p - start;
 	}
 
 	bool good() const {
@@ -189,13 +286,36 @@ public:
 	}
 
 private:
+	const uint8_t* start;
 	const uint8_t* p;
 	const uint8_t* end;
 };
 
-bool drawImage(Icon const& icon, uint32_t ofs, uint32_t sz, DrawEngine* eng) {
+std::optional<RGBA> paletteColor(IconData const& icon,
+		size_t paletteIndex, size_t colorIndex) {
+	if (icon.palvec == nullptr) {
+		return std::nullopt;
+	}
+
+	auto& v = *icon.palvec;
+	if (paletteIndex >= v.size()) {
+		return std::nullopt;
+	}
+
+	auto& w = v[paletteIndex];
+	if (colorIndex >= w.size()) {
+		return std::nullopt;
+	}
+
+	return w[colorIndex];
+}
+
+void drawImage(IconData const& icon, size_t paletteIndex,
+	uint32_t ofs, uint32_t sz, DrawEngine* eng) {
+
 	if (ofs+sz > icon.data.size()) {
-		return false;
+		eng->Error(error::EmptyImage{});
+		return;
 	}
 
 	const uint8_t* base = icon.data.data();
@@ -206,7 +326,8 @@ bool drawImage(Icon const& icon, uint32_t ofs, uint32_t sz, DrawEngine* eng) {
 	float xmax = pm.coord();
 	float ymax = pm.coord();
 	if (!pm.good()) {
-		return false;
+		eng->Error(error::EmptyImage{});
+		return;
 	}
 
 	eng->ViewBox(xmin, ymin, xmax, ymax);
@@ -221,6 +342,7 @@ bool drawImage(Icon const& icon, uint32_t ofs, uint32_t sz, DrawEngine* eng) {
 
 	std::vector<Point> ptbuf;
 	while (pm.good()) {
+		size_t opPos = pm.pos();
 		uint8_t op = pm.byte();
 		uint8_t t = op & 0xf0;
 		switch (op & 0xf0) {
@@ -230,10 +352,10 @@ bool drawImage(Icon const& icon, uint32_t ofs, uint32_t sz, DrawEngine* eng) {
 
 			case 0x00:
 				// Stop
-				return true;
+				return;
 
 			case 0x01: {
-				// Set solid fill
+				// Set solid RGBA fill
 				uint8_t r = pm.byte();
 				uint8_t g = pm.byte();
 				uint8_t b = pm.byte();
@@ -242,8 +364,22 @@ bool drawImage(Icon const& icon, uint32_t ofs, uint32_t sz, DrawEngine* eng) {
 				break;
 			}
 
+			case 0x02: {
+				// Set solid palette fill
+				size_t i = pm.byte();
+				auto oc = paletteColor(icon, paletteIndex, i);
+				if (!oc) {
+					eng->Error(error::InvalidPaletteIndex{opPos, i});
+					return;
+				}
+				auto c = *oc;
+				eng->SetSolidFill(c.r, c.g, c.b, c.a);
+				break;
+			}
+
 			default:
-				return false;
+				eng->Error(error::InvalidOpCode{opPos, op});
+				return;
 			}
 			break;
 
@@ -255,7 +391,8 @@ bool drawImage(Icon const& icon, uint32_t ofs, uint32_t sz, DrawEngine* eng) {
 				}
 				eng->MoveTo(pm.point());
 			} else {
-				return false;
+				eng->Error(error::InvalidOpCode{opPos, op});
+				return;
 			}
 			break;
 
@@ -288,28 +425,56 @@ bool drawImage(Icon const& icon, uint32_t ofs, uint32_t sz, DrawEngine* eng) {
 		}
 
 		default:
-			return false;
+			eng->Error(error::InvalidOpCode{opPos, op});
+			return;
 		}
 	}
-
-	return false;
 }
 
 } // end namespace detail
 
-bool DrawIcon(Icon const& icon, uint16_t dx, uint16_t dy, DrawEngine* eng) {
+namespace error {
+
+std::string EmptyImage::Msg() const {
+	return "empty image";
+}
+
+std::string InvalidPaletteIndex::Msg() const {
+	std::ostringstream s;
+	s << "invalid palette index " << i << " at byte " << p;
+	return s.str();
+}
+
+std::string InvalidOpCode::Msg() const {
+	std::ostringstream s;
+	s << "invalid opcode " << std::hex << std::showbase << int(op)
+		<< " at byte " << std::dec << std::noshowbase << p;
+	return s.str();
+}
+
+} // end namespace error
+
+void Icon::Draw(DrawEngine* eng, uint16_t dx, uint16_t dy, size_t paletteIndex) const {
+	if (d == nullptr) {
+		// empty icon
+		eng->Error(error::EmptyImage{});
+		return;
+	}
+
+	IconData const& icon = *d;
 	if (icon.images.empty()) {
-		return false;
+		eng->Error(error::EmptyImage{});
+		return;
 	}
 
 	for (auto& m : icon.images) {
 		if (m.dx <= dx && m.dy <= dy) {
-			return detail::drawImage(icon, m.offset, m.size, eng);
+			return detail::drawImage(icon, paletteIndex, m.offset, m.size, eng);
 		}
 	}
 
 	auto const& m = icon.images.back();
-	return detail::drawImage(icon, m.offset, m.size, eng);
+	return detail::drawImage(icon, paletteIndex, m.offset, m.size, eng);
 }
 
 } // end namespace vectoricon
