@@ -40,6 +40,7 @@ public:
 	int debugPathIdx = 0;
 	int singleIconIdx = 0;
 	bool brushPattern = false;
+	bool direct_ = false;
 };
 
 std::vector<int> Window::paintSizes = {16, 20, 24, 28, 32, 48, 64, 128};
@@ -160,6 +161,10 @@ void Window::OnKeyDown(WPARAM w) {
 
 	case 'B':
 		brushPattern = !brushPattern;
+		break;
+
+	case 'X':
+		direct_ = !direct_;
 		break;
 
 	case 'I':
@@ -390,13 +395,13 @@ void Window::OnPaint(HDC dc, int dx, int dy) {
 	if (i >= 0) {
 		auto it = pack.begin() + i;
 		RECT r{x, y, x+paintSize, y+paintSize};
-		eng->DrawIconDirect(dc, &r, *it);
+		eng->DrawIconEx(direct_, dc, &r, *it);
 		return;
 	}
 
 	for (auto const& icon : pack) {
 		RECT r{x, y, x+paintSize, y+paintSize};
-		eng->DrawIconDirect(dc, &r, icon);
+		eng->DrawIconEx(direct_, dc, &r, icon);
 
 		x += paintSize + pad;
 		if (x + paintSize > dx) {

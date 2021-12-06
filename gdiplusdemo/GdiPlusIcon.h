@@ -14,8 +14,9 @@ class GdiPlusIconEngine : public vectoricon::DrawEngine {
 public:
 	GdiPlusIconEngine();
 
-	void DrawIconDirect(HDC hdc, RECT const* r, vectoricon::Icon const& icon);
 	void DrawIcon(HDC hdc, RECT const* r, vectoricon::Icon const& icon);
+	void DrawIconDirect(HDC hdc, RECT const* r, vectoricon::Icon const& icon);
+	void DrawIconEx(bool direct, HDC hdc, RECT const* r, vectoricon::Icon const& icon);
 
 	virtual void Colorize(uint8_t& r, uint8_t& g, uint8_t& b);
 
@@ -37,12 +38,11 @@ private:
 		convertPoints(std::vector<vectoricon::Point> const& pts);
 
 private:
-	Gdiplus::Bitmap m_bitmap; // bitmap used for painting
-	Gdiplus::Graphics m_graphics;
+	class DIBBuf;
+	std::unordered_map<uint32_t, std::shared_ptr<DIBBuf>> m_dibs;
 
 	Gdiplus::Graphics* m_gr;
 
-	Gdiplus::SolidBrush m_emptyBrush;
 	Gdiplus::SolidBrush m_solidBrush;
 	Gdiplus::GraphicsPath m_path;
 
@@ -57,7 +57,6 @@ private:
 	int m_oy = 0;
 	int m_dx = 0;
 	int m_dy = 0;
-	bool m_dirty = false;
 };
 
 #endif // GDIPLUSICON_H_INCLUDED_

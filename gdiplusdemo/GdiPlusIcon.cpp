@@ -3,15 +3,110 @@
 #pragma comment (lib, "Gdiplus.lib")
 #pragma comment (lib, "Msimg32.lib") // AlphaBlend
 
-GdiPlusIconEngine::GdiPlusIconEngine() :
-	m_bitmap(256, 256, PixelFormat32bppPARGB),
-	m_graphics(&m_bitmap),
-	m_emptyBrush(Gdiplus::Color(0, 0, 0, 0)),
-	m_solidBrush(Gdiplus::Color(0, 0, 0, 0)) {
+// DIBBuf is an interoperability buffer between GDI+ and GDI.
+//
+// Using DIBBuf to paint using GDI+ in an HDC can be faster
+// because copying the destination content of the GDI to and from GDI+ bitmap
+// in the Graphics constructor is be avoided.
+class GdiPlusIconEngine::DIBBuf {
+public:
+	DIBBuf(int dx, int dy) :
+		dx(dx),
+		dy(dy),
+		xbitmap_(dx, dy, PixelFormat32bppPARGB),
+		graphics_(&xbitmap_) {
 
-	m_graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+		graphics_.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+		graphics_.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias8x8);
+
+		BITMAPINFO bmi;
+		ZeroMemory(&bmi, sizeof(bmi));
+
+		BITMAPINFOHEADER& h = bmi.bmiHeader;
+		h.biSize = sizeof(BITMAPINFOHEADER);
+		h.biWidth = dx;
+		h.biHeight = dy;
+		h.biPlanes = 1;
+		h.biBitCount = 32;
+		h.biCompression = BI_RGB;
+
+		hbitmap_ = ::CreateDIBSection(nullptr,
+				&bmi, DIB_RGB_COLORS, &bits_, nullptr, 0);
+	}
+
+	~DIBBuf() {
+		::DeleteObject(hbitmap_);
+	}
+
+	// CopyBits copies image data from the GDI+ Bitmap
+	// to the GDI DIBSection bitmap.
+	bool CopyBits() {
+		Gdiplus::Rect rc(0, 0, dx, dy);
+
+		Gdiplus::BitmapData data;
+		if (Gdiplus::Ok != xbitmap_.LockBits(&rc, Gdiplus::ImageLockModeRead,
+			PixelFormat32bppPARGB, &data)) {
+			return false;
+		}
+
+		uint8_t* p0 = ((uint8_t*)data.Scan0) + (dy-1)*data.Stride;
+		uint8_t* p1 = (uint8_t*)bits_;
+		size_t bytesPerLine = 4 * dx;
+		for (int y = 0; y < dy; y++) {
+			memcpy(p1, p0, bytesPerLine);
+			p0 -= data.Stride;
+			p1 += bytesPerLine;
+		}
+
+		xbitmap_.UnlockBits(&data);
+		return true;
+	}
+
+	// DrawImage draws the GDI DIBSection bitmap on the HDC.
+	void DrawImage(HDC hdc, int x, int y) {
+		BLENDFUNCTION bf = {};
+		bf.BlendOp = AC_SRC_OVER;
+		bf.BlendFlags = 0;
+		bf.SourceConstantAlpha = 255;
+		bf.AlphaFormat = AC_SRC_ALPHA;
+
+		HDC hdcSrc = ::CreateCompatibleDC(hdc);
+		HGDIOBJ hold = ::SelectObject(hdcSrc, hbitmap_);
+		::AlphaBlend(hdc, x, y, dx, dy,
+			hdcSrc, 0, 0, dx, dy, bf);
+		::SelectObject(hdcSrc, hold);
+		::DeleteObject(hdcSrc);
+	}
+
+	Gdiplus::Graphics& Graphics() { return graphics_; }
+
+	int Dx() const { return dx; }
+	int Dy() const { return dy; }
+
+private:
+	int dx, dy;
+	Gdiplus::Bitmap xbitmap_;
+	Gdiplus::Graphics graphics_;
+
+	HBITMAP hbitmap_;
+	void* bits_;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+GdiPlusIconEngine::GdiPlusIconEngine() :
+	m_solidBrush(Gdiplus::Color(0, 0, 0, 0)) {
 }
 
+void GdiPlusIconEngine::DrawIconEx(bool direct, HDC hdc, RECT const* rr, vectoricon::Icon const& icon) {
+	if (direct) {
+		DrawIconDirect(hdc, rr, icon);
+	} else {
+		DrawIcon(hdc, rr, icon);
+	}
+}
+
+// DrawIconDirect draws the icon directly on the destination HDC.
 void GdiPlusIconEngine::DrawIconDirect(HDC hdc, RECT const* rr, vectoricon::Icon const& icon) {
 	using namespace Gdiplus;
 
@@ -34,6 +129,8 @@ void GdiPlusIconEngine::DrawIconDirect(HDC hdc, RECT const* rr, vectoricon::Icon
 	m_gr = nullptr;
 }
 
+// DrawIcon draws the icon using an internal buffer, eliminating
+// the overhead of initializing graphics objects.
 void GdiPlusIconEngine::DrawIcon(HDC hdc, RECT const* rr, vectoricon::Icon const& icon) {
 	RECT const& r = *rr;
 	m_ox = 0;
@@ -41,36 +138,22 @@ void GdiPlusIconEngine::DrawIcon(HDC hdc, RECT const* rr, vectoricon::Icon const
 	m_dx = r.right - r.left;
 	m_dy = r.bottom - r.top;
 
-	m_gr = &m_graphics;
-
-	if (m_dirty) {
-		m_graphics.SetCompositingMode(Gdiplus::CompositingModeSourceCopy);
-		m_graphics.SetSmoothingMode(Gdiplus::SmoothingModeNone);
-
-		m_graphics.FillRectangle(&m_emptyBrush, 0, 0, m_dx, m_dy);
+	uint32_t sz = (uint32_t(m_dx)<<16) | uint32_t(m_dy);
+	auto it = m_dibs.find(sz);
+	if (it == m_dibs.end()) {
+		it = m_dibs.insert({sz, std::make_shared<DIBBuf>(m_dx, m_dy)}).first;
 	}
 
-	m_graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias8x8);
-	m_graphics.SetCompositingMode(Gdiplus::CompositingModeSourceOver);
+	DIBBuf& buf = *it->second;
+	m_gr = &buf.Graphics();
+
+	m_gr->Clear(Gdiplus::Color(0, 0, 0, 0));
+	m_gr->ResetTransform();
 
 	DrawIconImpl(icon);
 
-	m_dirty = true;
-
-	m_graphics.ResetTransform();
-
-	BLENDFUNCTION bf = {};
-	bf.BlendOp = AC_SRC_OVER;
-	bf.BlendFlags = 0;
-	bf.SourceConstantAlpha = 255;
-	bf.AlphaFormat = AC_SRC_ALPHA;
-
-	HDC hdcgr = m_graphics.GetHDC();
-
-	::AlphaBlend(hdc, r.left, r.top, m_dx, m_dy,
-			hdcgr, 0, 0, m_dx, m_dy, bf);
-
-	m_graphics.ReleaseHDC(hdcgr);
+	buf.CopyBits();
+	buf.DrawImage(hdc, r.left, r.top);
 }
 
 void GdiPlusIconEngine::DrawIconImpl(vectoricon::Icon const& icon) {
