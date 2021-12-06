@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func ConvertSvg(fn string, precision float64) (*ProgImage, []color.NRGBA, error) {
+func ConvertSvg(fn string, project Project) (*ProgImage, []color.NRGBA, error) {
 	f, err := os.Open(fn)
 	if err != nil {
 		return nil, nil, err
@@ -23,8 +23,13 @@ func ConvertSvg(fn string, precision float64) (*ProgImage, []color.NRGBA, error)
 	}
 	//pathSort(svg)
 
-	g := svgprog{fn: fn}
-	g.mem.Precision = precision
+	cm, err := project.ColorMap()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	g := svgprog{fn: fn, colormap: cm}
+	g.mem.Precision = project.Epsilon
 	g.tree(svg)
 
 	return g.finish(), g.colors, nil
@@ -100,10 +105,13 @@ func pathSort(n Node) {
 }
 
 type svgprog struct {
-	fn  string
+	fn       string
+	colormap map[color.NRGBA]int
+
 	im  *ProgImage
 	mem ProgMem
 
+	// non-palette colors
 	colors []color.NRGBA
 }
 
@@ -209,11 +217,15 @@ func (g *svgprog) handle_fill(n Node) error {
 		return fmt.Errorf("can't find fill style")
 	}
 
-	cn := color.NRGBAModel.Convert(c).(color.NRGBA)
-	g.colors = append(g.colors, cn)
+	if i, ok := g.colormap[c]; ok {
+		g.mem.Byte(0x02)
+		g.mem.Byte(byte(i))
+	} else {
+		g.colors = append(g.colors, c)
 
-	g.mem.Byte(0x01)
-	g.mem.Color(c)
+		g.mem.Byte(0x01)
+		g.mem.Color(c)
+	}
 
 	return nil
 }
@@ -242,7 +254,7 @@ func findattr(n Node, name string) string {
 	return r
 }
 
-func get_svg_solid_fill(n Node) (color.Color, bool) {
+func get_svg_solid_fill(n Node) (color.NRGBA, bool) {
 	fs := findattr(n, "fill")
 	if fs != "" {
 		c, ok := colorfromhex(fs)
@@ -255,14 +267,14 @@ func get_svg_solid_fill(n Node) (color.Color, bool) {
 	return colorfromhex(style["fill"])
 }
 
-func colorfromhex(s string) (color.Color, bool) {
+func colorfromhex(s string) (color.NRGBA, bool) {
 	if s == "" || s[0] != '#' {
-		return nil, false
+		return color.NRGBA{}, false
 	}
 
 	v, err := strconv.ParseUint(s[1:], 16, 64)
 	if err != nil {
-		return nil, false
+		return color.NRGBA{}, false
 	}
 
 	switch len(s) - 1 {
@@ -279,7 +291,7 @@ func colorfromhex(s string) (color.Color, bool) {
 		return color.NRGBA{r, g, b, 0xff}, true
 	}
 
-	return nil, false
+	return color.NRGBA{}, false
 }
 
 func cssdecode(css string) map[string]string {

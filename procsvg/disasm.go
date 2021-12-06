@@ -1,8 +1,8 @@
 package main
 
 import (
-	"encoding/binary"
 	"fmt"
+	"image/color"
 	"io"
 )
 
@@ -22,43 +22,100 @@ func DumpPack(r io.Reader, w io.Writer) {
 	nicons := int(byteOrder.Uint32(header[4:]))
 	fmt.Fprintf(w, "# %d icons\n", nicons)
 
-	for i := 0; i < nicons; i++ {
-		pe, err := readPackElem(r)
+	var pal0 []color.NRGBA
+
+	for {
+		magic, data, err := readSection(r)
+		if err == io.EOF {
+			fmt.Fprintln(w, "# EOF")
+			return
+		}
 		if err != nil {
 			fmt.Fprintf(w, "# I/O ERROR %s", err)
 			return
 		}
 
-		for _, m := range pe.Image {
-			fmt.Fprintf(w, "ICON %q %d×%d\n", pe.Name, m.Width, m.Height)
-			disasm(w, m.Data)
+		switch magic {
+
+		case PaletteMagic:
+			pal, idx, err := parsePalette(data)
+			if err != nil {
+				fmt.Fprintf(w, "# palette data ERROR %s", err)
+				return
+			}
+			fmt.Fprintf(w, "PALETTE %d # %d entries\n", idx, len(pal))
+			for i, c := range pal {
+				fmt.Fprintf(w, "%02x %02x %02x %02x  RGBA %3d: %s\n",
+					c.R, c.G, c.B, c.A, i, colorstr(c))
+			}
+			if idx == 0 {
+				pal0 = pal
+			}
+			fmt.Fprintln(w)
+
+		case IconMagic:
+			pe, err := parseIcon(data)
+			if err != nil {
+				fmt.Fprintf(w, "# icon data ERROR %s", err)
+				return
+			}
+
+			for _, m := range pe.Image {
+				fmt.Fprintf(w, "ICON %q %d×%d\n", pe.Name, m.Width, m.Height)
+				disasm(w, pal0, m.Data)
+				fmt.Fprintln(w)
+			}
+
+		default:
+			fmt.Fprintf(w, "# unrecognised section '%s'\n\n", magic)
 		}
 	}
 }
 
-func readPackElem(r io.Reader) (PackElem, error) {
-	var fs uint32
-	if err := binary.Read(r, byteOrder, &fs); err != nil {
-		return PackElem{}, err
+func readSection(r io.Reader) (magic string, data []byte, err error) {
+	var header [8]byte
+	_, err = io.ReadFull(r, header[:])
+	if err != nil {
+		return "", nil, err
 	}
 
-	if fs > 1<<20 {
-		return PackElem{}, fmt.Errorf("Invalid icon file size")
+	nbytes := int(byteOrder.Uint32(header[4:]))
+	if nbytes > 1<<20 {
+		return "", nil, fmt.Errorf("Section size too large")
 	}
 
-	data := make([]byte, int(fs))
+	data = make([]byte, int(nbytes))
 	if _, err := io.ReadFull(r, data); err != nil {
-		return PackElem{}, err
+		if err == io.EOF {
+			err = io.ErrUnexpectedEOF
+		}
+
+		return "", nil, err
 	}
 
-	invh := fmt.Errorf("Invalid icon header")
-	if len(data) == 0 {
-		return PackElem{}, invh
+	return string(header[:4]), data, nil
+}
+
+func parsePalette(data []byte) (pal []color.NRGBA, idx int, err error) {
+	n := len(data)
+	if n < 2 || n != 2+4*int(data[1]) {
+		return nil, 0, fmt.Errorf("invalid palette size %d", n)
 	}
 
+	idx = int(data[0])
+	for i := 2; i < n; i += 4 {
+		c := data[i:]
+		pal = append(pal, color.NRGBA{c[0], c[1], c[2], c[3]})
+	}
+	return pal, idx, nil
+}
+
+var errInvalidIconHeader = fmt.Errorf("Invalid icon header")
+
+func parseIcon(data []byte) (PackElem, error) {
 	e := int(data[0]) + 1
 	if e+1 > len(data) {
-		return PackElem{}, invh
+		return PackElem{}, errInvalidIconHeader
 	}
 
 	name := string(data[1:e])
@@ -68,7 +125,7 @@ func readPackElem(r io.Reader) (PackElem, error) {
 
 	const ihbytes = 8
 	if len(data) < numimages*ihbytes {
-		return PackElem{}, invh
+		return PackElem{}, errInvalidIconHeader
 	}
 
 	type imageInfo struct {
@@ -112,6 +169,7 @@ func readPackElem(r io.Reader) (PackElem, error) {
 type ProgReader struct {
 	out     io.Writer
 	data    []byte
+	pal     []color.NRGBA
 	pos     int
 	invalid bool
 }
@@ -161,6 +219,18 @@ func (pr *ProgReader) step() {
 	pr.pos = e
 }
 
+func colorstr(c color.NRGBA) string {
+	if c.A != 255 {
+		return fmt.Sprintf("rgba(%.4f,%.4f,%.4f,%.4f)",
+			float64(c.R)/255,
+			float64(c.G)/255,
+			float64(c.B)/255,
+			float64(c.A)/255)
+	} else {
+		return fmt.Sprintf("#%02x%02x%02x", c.R, c.G, c.B)
+	}
+}
+
 func (pr *ProgReader) stepCmd() {
 	s := pr.pos
 	op := pr.Byte()
@@ -169,21 +239,24 @@ func (pr *ProgReader) stepCmd() {
 	switch op & 0xf0 {
 
 	case 0x00:
-		if op == 0x00 {
+		switch op {
+
+		case 0x00:
 			cmd = "STOP"
-		} else if op == 0x01 {
-			r, b, g, a := pr.Byte(), pr.Byte(), pr.Byte(), pr.Byte()
-			var color string
-			if a != 255 {
-				color = fmt.Sprintf("rgba(%.4f, %.4f, %.4f, %.4f)",
-					float64(r)/255,
-					float64(g)/255,
-					float64(b)/255,
-					float64(a)/255)
+
+		case 0x01:
+			c := color.NRGBA{pr.Byte(), pr.Byte(), pr.Byte(), pr.Byte()}
+			cmd = fmt.Sprintf("SOLIDFILL-rgba %s", colorstr(c))
+
+		case 0x02:
+			i := int(pr.Byte())
+			var c color.NRGBA
+			if i < len(pr.pal) {
+				c = pr.pal[i]
 			} else {
-				color = fmt.Sprintf("#%02x%02x%02x", r, g, b)
+				fmt.Fprintln(pr.out, "# INVALID palette index")
 			}
-			cmd = fmt.Sprintf("SOLIDFILL %s", color)
+			cmd = fmt.Sprintf("SOLIDFILL-idx %d → %s", i, colorstr(c))
 		}
 
 	case 0x70:
@@ -226,10 +299,11 @@ func (pr *ProgReader) stepCmd() {
 	return
 }
 
-func disasm(w io.Writer, data []byte) {
+func disasm(w io.Writer, pal []color.NRGBA, data []byte) {
 	r := ProgReader{
 		out:  w,
 		data: data,
+		pal:  pal,
 	}
 	fmt.Fprintln(r.out, "# viewbox:")
 	r.Point()

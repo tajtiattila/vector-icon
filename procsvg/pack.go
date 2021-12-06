@@ -31,7 +31,7 @@ func pack_project(project Project) error {
 			if cli.verbose {
 				fmt.Fprintf(os.Stderr, "Packing %s\n", path)
 			}
-			x, colors, err := ConvertSvg(path, project.Epsilon)
+			x, colors, err := ConvertSvg(path, project)
 			if err != nil {
 				return fmt.Errorf("error converting %s: %w", path, err)
 			}
@@ -52,7 +52,9 @@ func pack_project(project Project) error {
 		return pe[i].Name < pe[j].Name
 	})
 
-	k := IconPack{}
+	k := IconPack{
+		palette: project.Palette,
+	}
 	for _, e := range pe {
 		k.Add(e)
 	}
@@ -87,11 +89,13 @@ func pack_project(project Project) error {
 			return ci.B < cj.B
 		})
 
-		fmt.Fprintln(fa, "# image colors:")
-		for _, c := range vcol {
-			fmt.Fprintf(fa, "# %02x%02x%02x\n", c.R, c.G, c.B)
+		if len(vcol) != 0 {
+			fmt.Fprintln(fa, "# non-palette image colors:")
+			for _, c := range vcol {
+				fmt.Fprintf(fa, "# %02x%02x%02x\n", c.R, c.G, c.B)
+			}
+			fmt.Fprintln(fa)
 		}
-		fmt.Fprintln(fa)
 
 		pr, pw := io.Pipe()
 		go func() {
@@ -110,7 +114,8 @@ func pack_project(project Project) error {
 }
 
 type IconPack struct {
-	elem []PackElem
+	palette []ColorRow
+	elem    []PackElem
 }
 
 type PackElem struct {
@@ -168,14 +173,34 @@ func (k *IconPack) Add(pe PackElem) {
 }
 
 const PackMagic = "icpk"
+const PaletteMagic = "PALT"
+const IconMagic = "ICON"
 
 func (k *IconPack) WriteTo(w0 io.Writer) (n int64, err error) {
 	w := &countWriter{w: w0}
 
 	fmt.Fprint(w, PackMagic)
-	writeUint32(w, uint32(len(k.elem)))
+	if _, err := writeUint32(w, uint32(len(k.elem))); err != nil {
+		return w.n, err
+	}
+
+	if len(k.palette) != 0 {
+		npals := 1
+		for _, cr := range k.palette {
+			if n := len(cr); n > npals {
+				npals = n
+			}
+		}
+
+		for i := 0; i < npals; i++ {
+			if err = k.writePalette(w, i); err != nil {
+				return w.n, err
+			}
+		}
+	}
 
 	for _, e := range k.elem {
+		fmt.Fprint(w, IconMagic)
 		err := e.writeTo(w)
 		if err != nil {
 			return w.n, err
@@ -183,6 +208,30 @@ func (k *IconPack) WriteTo(w0 io.Writer) (n int64, err error) {
 	}
 
 	return w.n, nil
+}
+
+func (k *IconPack) writePalette(w io.Writer, i int) error {
+	fmt.Fprint(w, PaletteMagic)
+
+	buf := new(bytes.Buffer)
+	buf.WriteByte(byte(i))
+	buf.WriteByte(byte(len(k.palette)))
+	for _, cr := range k.palette {
+		var c color.NRGBA
+		if i < len(cr) {
+			c = cr[i]
+		}
+		buf.WriteByte(c.R)
+		buf.WriteByte(c.G)
+		buf.WriteByte(c.B)
+		buf.WriteByte(c.A)
+	}
+
+	if _, err := writeUint32(w, uint32(len(buf.Bytes()))); err != nil {
+		return err
+	}
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 func writeUint32(w io.Writer, v uint32) (n int, err error) {

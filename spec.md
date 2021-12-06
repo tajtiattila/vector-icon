@@ -8,17 +8,28 @@ colors are non-alpha-premultiplied.
 Icon pack format
 ================
 
-1x Icon pack header
+4xBYTE Magic 'icpk'
+UINT32 Number of icons
+Nx File segments
+
+File segments begin with a 4 byte identifier, and an UINT32 byte size.
+The size doesn't include the identifier and the size itself.
+
 Nx Packed icon images (N = NumIcons in icon pack header)
 
-Icon pack header
-----------------
+Palette segment
+===============
 
-Magic [4 x BYTE] "icpk"
-NumIcons [UINT32] number of icons in pack
+4×BYTE   Magic 'PALT'
+UINT32   Palette data size in bytes
+UINT8    Palette index
+UINT8    Number of colors (N)
+N×4×BYTE Palette color entries
 
-Packed icon image
------------------
+Palette color entries are 4 byte non-premultiplied RGBA.
+
+Packed icon image segment
+=========================
 
 1x Icon header
 Nx Icon variant headers (N = NumImage in Icon header)
@@ -29,10 +40,11 @@ Variant images are ordered in decreasing size (area) in the icon headers.
 Icon header
 -----------
 
-FileSize [UINT32] icon size in bytes
-NameLen  [BYTE]   icon name length
-Name              icon name (UTF-8)
-NumImage [BYTE]   number of image variants for this icon
+4xBYTE  Magic 'ICON'
+UINT32  Icon data size in bytes
+BYTE    Icon name length
+        Icon name (UTF-8)
+BYTE    Number of image variants for this icon
 
 Icon variant header
 -------------------
@@ -55,7 +67,8 @@ currently selected style (no stroke with solid fill for now).
 
 0x00       Stop - End program
 0x01       SetSolidFill <color> - Set solid fill color
-0x02..0x6f Reserved
+0x02       SetSolidFill <palette-index> - Set solid fill color
+0x03..0x6f Reserved
 0x70       BeginMoveTo <x> <y> - Begin a new path at position
 0x71       MoveTo <x> <y> - Move to position
 0x72..0x7f Reserved
