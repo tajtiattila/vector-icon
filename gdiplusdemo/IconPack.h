@@ -82,7 +82,7 @@ public:
 
 	virtual void Error(DrawError const&) { }
 
-	// ViewBox sets up painting for the icon.
+	// ViewBox sets up the view box for painting the icon.
 	virtual void ViewBox(float xmin, float ymin, float xmax, float ymax) = 0;
 
 	// SetSolidFill sets up solid fill mode.
