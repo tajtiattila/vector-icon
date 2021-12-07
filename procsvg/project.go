@@ -1,91 +1,114 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"image/color"
+	"os"
 	"strings"
+
+	"github.com/BurntSushi/toml"
 )
 
 type Project struct {
 	// source svg icon dir relative to project file
-	IconDir string `json:"icondir"`
+	IconDir string
 
 	// size subdirs for icons with multiple sizes or levels of detail
-	SizeDirs []string `json:"sizedirs"`
+	SizeDir []string
 
 	// intermediate dir relative to project file
-	IntermediateDir string `json:"intermediatedir"`
+	IntermediateDir string
 
-	// conversion precision
-	Epsilon float64 `json:"epsilon"`
+	// Epsilon is the icon conversion precision.
+	Epsilon float64
 
-	// Palette defines optional palettes.
-	//
-	// The first color in each row encodes SVG colors,
-	// and is written as the icon pack palette index = 0.
-	// Additional colors are written into additional palettes,
-	// and may be used to encode styled/themed colors.
-	Palette []ColorRow
+	// AutoPalette generates the palette automatically,
+	// when there is no default palette.
+	AutoPalette bool
+
+	// Palette defines the default palette.
+	Palette []ProjectColor
+
+	// ColorTransform defines color transformations.
+	// Each transformation yields a new palette.
+	ColorTransform []ColorTransform
 
 	// target relative to project file
-	Target string `json:"target"`
+	Target string
 }
 
 var DefaultProject = Project{
 	IconDir:         "icons",
 	IntermediateDir: "intermediate",
-	SizeDirs:        []string{"."},
+	SizeDir:         []string{"."},
 	Epsilon:         1e-4,
 	Target:          "icons.iconpk",
 }
 
-func (p Project) ColorMap() (map[color.NRGBA]int, error) {
-	if len(p.Palette) > 127 {
-		return nil, fmt.Errorf("extended palette not implemented (max colors == 127)")
+type ProjectColor color.NRGBA
+
+func (c *ProjectColor) UnmarshalText(p []byte) error {
+	s := string(p)
+
+	if x, ok := colorfromhex(s); ok {
+		*c = ProjectColor(x)
+		return nil
 	}
 
-	var nlen int
-	m := make(map[color.NRGBA]int)
-	for i, cr := range p.Palette {
-		c := cr[0]
-		m[c] = i
-		if i == 0 {
-			nlen = len(cr)
-		} else {
-			if len(cr) != nlen {
-				return nil, fmt.Errorf("palette row lengths differ at %d", i)
-			}
-		}
-	}
-
-	return m, nil
+	return fmt.Errorf("Invalid color %s", s)
 }
 
-type ColorRow []color.NRGBA
+type ColorTransform struct {
+	// Map defines mapped color pairs (old, new)
+	Map ColorMap
 
-func (cr *ColorRow) UnmarshalJSON(p []byte) error {
-	var s string
-	if err := json.Unmarshal(p, &s); err != nil {
-		return err
+	// InvertYPrime specifies that colors not present in the color map
+	// shoudl have their Y' value inverted in the Y'CbCr color space.
+	InvertYPrime bool
+}
+
+type ColorMap map[color.NRGBA]color.NRGBA
+
+func (cm *ColorMap) UnmarshalText(p []byte) error {
+	v := strings.FieldsFunc(string(p), func(r rune) bool {
+		return !hexColorRune(r)
+	})
+	if len(v)%2 != 0 {
+		return fmt.Errorf("invalid number of colormap colors: %d", len(v))
 	}
 
-	var v []color.NRGBA
-	for _, elem := range strings.Split(s, " ") {
-		if elem == "" {
-			continue
-		}
-		c, ok := colorfromhex(elem)
+	m := make(ColorMap)
+	for i := 0; i < len(v); i += 2 {
+		c0, ok := colorfromhex(v[i])
 		if !ok {
-			return fmt.Errorf("Invalid color %s in palette", elem)
+			return fmt.Errorf("invalid color %s", v[i])
 		}
-		v = append(v, c)
+		c1, ok := colorfromhex(v[i+1])
+		if !ok {
+			return fmt.Errorf("invalid color %s", v[i+1])
+		}
+		m[c0] = c1
 	}
-
-	if len(v) == 0 {
-		return fmt.Errorf("Empty palette entry")
-	}
-
-	*cr = v
+	*cm = m
 	return nil
+}
+
+func hexColorRune(r rune) bool {
+	return r == '#' ||
+		('0' <= r && r <= '9') ||
+		('a' <= r && r <= 'f') ||
+		('A' <= r && r <= 'F')
+}
+
+func LoadProject(fn string) (Project, error) {
+	p := DefaultProject
+
+	f, err := os.Open(fn)
+	if err != nil {
+		return p, err
+	}
+	defer f.Close()
+
+	_, err = toml.NewDecoder(f).Decode(&p)
+	return p, err
 }

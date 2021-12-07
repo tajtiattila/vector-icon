@@ -15,48 +15,48 @@ import (
 var byteOrder = binary.LittleEndian
 
 func pack_project(project Project) error {
-	m := make(map[string][]*ProgImage)
-	mcol := make(map[color.NRGBA]struct{})
-	for _, sub := range project.SizeDirs {
-		sdir := filepath.Join(project.IconDir, sub)
-		dir := filepath.Join(project.IntermediateDir, sub)
-		svgs, err := readdirnames(sdir, "*.svg")
-		if err != nil {
-			return err
-		}
+	icons, err := findIcons(project)
+	if err != nil {
+		return err
+	}
 
-		for _, fn := range svgs {
-			name := strings.TrimSuffix(fn, ".svg")
-			path := filepath.Join(dir, fn)
+	colorStats := make(map[color.NRGBA]int)
+	for _, icon := range icons {
+		for _, fn := range icon.path {
+			if err := CollectSvgColors(fn, colorStats); err != nil {
+				return err
+			}
+		}
+	}
+
+	vpal := getpalv(project, colorStats)
+
+	var pal0 []color.NRGBA
+	if len(vpal) != 0 {
+		pal0 = vpal[0]
+	}
+
+	var pev []PackElem
+	for _, icon := range icons {
+		pe := PackElem{Name: icon.name}
+		for _, fn := range icon.path {
 			if cli.verbose {
-				fmt.Fprintf(os.Stderr, "Packing %s\n", path)
+				fmt.Fprintf(os.Stderr, "Packing %s\n", fn)
 			}
-			x, colors, err := ConvertSvg(path, project)
+			x, err := ConvertSvg(fn, project.Epsilon, pal0)
 			if err != nil {
-				return fmt.Errorf("error converting %s: %w", path, err)
+				return fmt.Errorf("error converting %s: %w", fn, err)
 			}
-			m[name] = append(m[name], x)
-
-			for _, c := range colors {
-				mcol[c] = struct{}{}
-			}
+			pe.Image = append(pe.Image, x)
 		}
+		pev = append(pev, pe)
 	}
-
-	var pe []PackElem
-	for n, im := range m {
-		pe = append(pe, PackElem{Name: n, Image: im})
-	}
-
-	sort.Slice(pe, func(i, j int) bool {
-		return pe[i].Name < pe[j].Name
-	})
 
 	k := IconPack{
-		palette: project.Palette,
+		palette: vpal,
 	}
-	for _, e := range pe {
-		k.Add(e)
+	for _, pe := range pev {
+		k.Add(pe)
 	}
 
 	f, err := os.Create(project.Target)
@@ -73,20 +73,19 @@ func pack_project(project Project) error {
 		}
 		defer fa.Close()
 
+		// find non-palette colors
+		palm := make(map[color.NRGBA]struct{})
+		for _, c := range pal0 {
+			palm[c] = struct{}{}
+		}
 		var vcol []color.NRGBA
-		for c := range mcol {
-			vcol = append(vcol, c)
+		for c := range colorStats {
+			if _, ok := palm[c]; !ok {
+				vcol = append(vcol, c)
+			}
 		}
 		sort.Slice(vcol, func(i, j int) bool {
-			ci := vcol[i]
-			cj := vcol[j]
-			if ci.R != cj.R {
-				return ci.R < cj.R
-			}
-			if ci.G != cj.G {
-				return ci.G < cj.G
-			}
-			return ci.B < cj.B
+			return lessColor(vcol[i], vcol[j])
 		})
 
 		if len(vcol) != 0 {
@@ -113,8 +112,116 @@ func pack_project(project Project) error {
 	return nil
 }
 
+type iconFile struct {
+	name string
+	path []string
+}
+
+func findIcons(project Project) ([]iconFile, error) {
+	m := make(map[string][]string)
+	for _, sub := range project.SizeDir {
+		sdir := filepath.Join(project.IconDir, sub)
+		dir := filepath.Join(project.IntermediateDir, sub)
+		svgs, err := readdirnames(sdir, "*.svg")
+		if err != nil {
+			return nil, err
+		}
+
+		for _, fn := range svgs {
+			name := strings.TrimSuffix(fn, ".svg")
+
+			path := filepath.Join(dir, fn)
+			m[name] = append(m[name], path)
+		}
+	}
+
+	var v []iconFile
+	for k, pv := range m {
+		v = append(v, iconFile{
+			name: k,
+			path: pv,
+		})
+	}
+	sort.Slice(v, func(i, j int) bool {
+		return v[i].name < v[j].name
+	})
+
+	return v, nil
+}
+
+func getpalv(project Project, colorStats map[color.NRGBA]int) [][]color.NRGBA {
+
+	if len(project.Palette) != 0 {
+		var p0 []color.NRGBA
+		for _, c := range project.Palette {
+			p0 = append(p0, color.NRGBA(c))
+		}
+		return applyTransforms(project, p0)
+	}
+
+	if !project.AutoPalette {
+		return nil
+	}
+
+	type colFreq struct {
+		c color.NRGBA
+		n int
+	}
+	var cf []colFreq
+	for c, n := range colorStats {
+		cf = append(cf, colFreq{c, n})
+	}
+
+	sort.Slice(cf, func(i, j int) bool {
+		if d := cf[i].n - cf[j].n; d != 0 {
+			return d < 0
+		}
+		return lessColor(cf[i].c, cf[j].c)
+	})
+
+	var p0 []color.NRGBA
+	for _, c := range cf {
+		p0 = append(p0, c.c)
+	}
+	return applyTransforms(project, p0)
+}
+
+func lessColor(ci, cj color.NRGBA) bool {
+	if ci.R != cj.R {
+		return ci.R < cj.R
+	}
+	if ci.G != cj.G {
+		return ci.G < cj.G
+	}
+	return ci.B < cj.B
+}
+
+func applyTransforms(project Project, p0 []color.NRGBA) [][]color.NRGBA {
+	pv := [][]color.NRGBA{p0}
+	fmt.Printf("%+v\n", project.ColorTransform)
+	for _, tr := range project.ColorTransform {
+		var px []color.NRGBA
+		for _, c := range p0 {
+			c1, ok := tr.Map[c]
+			if !ok {
+				if tr.InvertYPrime {
+					y, cb, cr := color.RGBToYCbCr(c.R, c.G, c.B)
+					y = 255 - y
+					c1.R, c1.G, c1.B = color.YCbCrToRGB(y, cb, cr)
+					c1.A = c.A
+				} else {
+					c1 = c
+				}
+			}
+			px = append(px, c1)
+		}
+		pv = append(pv, px)
+	}
+	return pv
+}
+
 type IconPack struct {
-	palette []ColorRow
+	palette [][]color.NRGBA
 	elem    []PackElem
 }
 
@@ -184,18 +291,9 @@ func (k *IconPack) WriteTo(w0 io.Writer) (n int64, err error) {
 		return w.n, err
 	}
 
-	if len(k.palette) != 0 {
-		npals := 1
-		for _, cr := range k.palette {
-			if n := len(cr); n > npals {
-				npals = n
-			}
-		}
-
-		for i := 0; i < npals; i++ {
-			if err = k.writePalette(w, i); err != nil {
-				return w.n, err
-			}
+	for i, p := range k.palette {
+		if err = writePalette(w, i, p); err != nil {
+			return w.n, err
 		}
 	}
 
@@ -210,17 +308,13 @@ func (k *IconPack) WriteTo(w0 io.Writer) (n int64, err error) {
 	return w.n, nil
 }
 
-func (k *IconPack) writePalette(w io.Writer, i int) error {
+func writePalette(w io.Writer, idx int, pal []color.NRGBA) error {
 	fmt.Fprint(w, PaletteMagic)
 
 	buf := new(bytes.Buffer)
-	buf.WriteByte(byte(i))
-	buf.WriteByte(byte(len(k.palette)))
-	for _, cr := range k.palette {
-		var c color.NRGBA
-		if i < len(cr) {
-			c = cr[i]
-		}
+	buf.WriteByte(byte(idx))
+	buf.WriteByte(byte(len(pal)))
+	for _, c := range pal {
 		buf.WriteByte(c.R)
 		buf.WriteByte(c.G)
 		buf.WriteByte(c.B)

@@ -5,7 +5,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-#include "color.h"
 #include "GdiPlusIcon.h"
 
 #include <algorithm>
@@ -235,124 +234,8 @@ uint8_t gray(uint8_t r, uint8_t g, uint8_t b) {
 	return truncb((ir * 19595 + ig * 38470 + ib * 7471) >> 16);
 }
 
-void ToHSL(float& h, float& s, float& l, uint8_t r0, uint8_t g0, uint8_t b0) {
-	float r = float(r0) / 255.f;
-	float g = float(g0) / 255.f;
-	float b = float(b0) / 255.f;
-
-	uint8_t cmax = (std::max)({r0, g0, b0});
-	uint8_t cmin = (std::min)({r0, g0, b0});
-	float delta = float(cmax - cmin) / 255.f;
-
-	if (cmax == cmin) {
-		h = 0;
-	} else if (cmax == r0) {
-		h = (g-b)/delta;
-		if (h < 0) {
-			h += 6.f;
-		}
-	} else if (cmax == g0) {
-		h = (b-r)/delta + 2.f;
-	} else { // cmax == b0
-		h = (r-g)/delta + 4.f;
-	}
-
-	int l0 = (int(cmin) + int(cmax));
-	l = (float(l0)/2) / 255.f;
-
-	if (l0 == 0 || l0 == 2*255) {
-		s = 0;
-	} else {
-		s = delta/(1.0f - std::fabs(2.f*l - 1.f));
-	}
-}
-
-void FromHSL(uint8_t& r, uint8_t& g, uint8_t& b, float h, float s, float l) {
-	float c = (1.f-fabs(2.f*l-1.f))*s;
-	float x = c * (1.f-std::fabs(std::fmod(h, 2.f) - 1.f));
-	float m = l - c/2.f;
-	static constexpr float z = 0.f;
-
-	std::tuple<float, float, float> fc;
-	int ih = int(floor(h));
-	switch (ih) {
-	case 0: fc = {c, x, z}; break;
-	case 1: fc = {x, c, z}; break;
-	case 2: fc = {z, c, x}; break;
-	case 3: fc = {z, x, c}; break;
-	case 4: fc = {x, z, c}; break;
-	case 5: fc = {c, z, x}; break;
-	}
-
-	r = uint8_t(floor((std::get<0>(fc) + m) * 255.f + 0.5f));
-	g = uint8_t(floor((std::get<1>(fc) + m) * 255.f + 0.5f));
-	b = uint8_t(floor((std::get<2>(fc) + m) * 255.f + 0.5f));
-}
-
-inline void ToYCbCr(uint8_t& y, uint8_t& cb, uint8_t& cr, uint8_t r, uint8_t g, uint8_t b) {
-	int ir = r;
-	int ig = g;
-	int ib = b;
-
-	//  Y' =   0 + (0.299    * R') + (0.587    * G') + (0.114    * B')
-	//  Cb = 128 - (0.168736 * R') - (0.331264 * G') + (0.5      * B')
-	//  Cr = 128 + (0.5      * R') - (0.418688 * G') - (0.081312 * B')
-	//
-	//  128.5 << 16 -> 257<<15
-	y  = truncb((ir * 19595 + ig * 38470 + ib * 7471) >> 16);
-	cb = truncb((-11056*ir - 21712*ig + 32768*ib + (257<<15)) >> 16);
-	cr = truncb((32768*ir - 27440*ig - 5328*ib + (257<<15)) >> 16);
-}
-
-inline void FromYCbCr(uint8_t& r, uint8_t& g, uint8_t& b, uint8_t y, uint8_t cb, uint8_t cr) {
-	//	R = Y' + 1.402   * (Cr-128)
-	//	G = Y' - 0.34414 * (Cb-128) - 0.71414 * (Cr-128)
-	//	B = Y' + 1.772   * (Cb-128)
-	int iy = (int(y)<<16) + (1<<15);
-	int icr = int(cr) - 128;
-	int icb = int(cb) - 128;
-	r = truncb((iy + 91881*icr) >> 16);
-	g = truncb((iy - 22554*icb - 46802*icr) >> 16);
-	b = truncb((iy + 116130*icb) >> 16);
-}
-
 void ColorizerIconEngine::Colorize(uint8_t &r, uint8_t &g, uint8_t &b) {
 	if (!grayMode) {
-		if (!darkMode) {
-			return;
-		}
-
-		switch (colorMode) {
-
-		case 0: { // HSL
-			float h, s, l;
-			ToHSL(h, s, l, r, g, b);
-			l = 1.f - l;
-			FromHSL(r, g, b, h, s, l);
-			break;
-		}
-
-		case 1: { // Y'CbCr
-			uint8_t y, cb, cr;
-			ToYCbCr(y, cb, cr, r, g, b);
-			y = 255-y;
-			FromYCbCr(r, g, b, y, cb, cr);
-			break;
-		}
-
-		case 2: { // CIE-L*ab
-			colorspace::sRGB s{r, g, b};
-			auto c = colorspace::Lab::from(s);
-
-			c.L = 100.0 - c.L;
-
-			s = colorspace::sRGB::from(c);
-			r = s.r;
-			g = s.g;
-			b = s.b;
-		}
-
-		}
 		return;
 	}
 
@@ -361,7 +244,7 @@ void ColorizerIconEngine::Colorize(uint8_t &r, uint8_t &g, uint8_t &b) {
 	if (!darkMode) {
 		y = 128 + y/4;
 	} else {
-		y = 64 + (255-y)/4;
+		y = 64 + y/4;
 	}
 
 	r = y;
@@ -373,6 +256,7 @@ void Window::OnPaint(HDC dc, int dx, int dy) {
 	RECT rect{0, 0, dx, dy};
 
 	COLORREF bkcolor = eng->darkMode ? eng->darkbk : eng->lightbk;
+	size_t palidx = eng->darkMode ? 1 : 0;
 	if (brushPattern) {
 		::SetBkColor(dc, bkcolor);
 		HBRUSH hbr = ::CreateHatchBrush(HS_DIAGCROSS, RGB(128, 128, 128));
@@ -395,13 +279,13 @@ void Window::OnPaint(HDC dc, int dx, int dy) {
 	if (i >= 0) {
 		auto it = pack.begin() + i;
 		RECT r{x, y, x+paintSize, y+paintSize};
-		eng->DrawIconEx(direct_, dc, &r, *it);
+		eng->DrawIconEx(direct_, dc, &r, *it, palidx);
 		return;
 	}
 
 	for (auto const& icon : pack) {
 		RECT r{x, y, x+paintSize, y+paintSize};
-		eng->DrawIconEx(direct_, dc, &r, icon);
+		eng->DrawIconEx(direct_, dc, &r, icon, palidx);
 
 		x += paintSize + pad;
 		if (x + paintSize > dx) {

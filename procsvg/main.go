@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -34,8 +33,8 @@ func main() {
 }
 
 func run_project(fn string) error {
-	project := DefaultProject
-	if err := loadjson(fn, &project); err != nil {
+	project, err := LoadProject(fn)
+	if err != nil {
 		return fmt.Errorf("Error loading project file %s: %w", fn, err)
 	}
 
@@ -55,15 +54,4 @@ func run_project(fn string) error {
 	}
 
 	return pack_project(project)
-}
-
-func loadjson(fn string, v interface{}) error {
-	f, err := os.Open(fn)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	d := json.NewDecoder(f)
-	return d.Decode(v)
 }

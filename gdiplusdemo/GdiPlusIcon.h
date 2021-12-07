@@ -14,9 +14,9 @@ class GdiPlusIconEngine : public vectoricon::DrawEngine {
 public:
 	GdiPlusIconEngine();
 
-	void DrawIcon(HDC hdc, RECT const* r, vectoricon::Icon const& icon);
-	void DrawIconDirect(HDC hdc, RECT const* r, vectoricon::Icon const& icon);
-	void DrawIconEx(bool direct, HDC hdc, RECT const* r, vectoricon::Icon const& icon);
+	void DrawIcon(HDC hdc, RECT const* r, vectoricon::Icon const& icon, size_t palidx = 0);
+	void DrawIconDirect(HDC hdc, RECT const* r, vectoricon::Icon const& icon, size_t palidx = 0);
+	void DrawIconEx(bool direct, HDC hdc, RECT const* r, vectoricon::Icon const& icon, size_t palidx = 0);
 
 	virtual void Colorize(uint8_t& r, uint8_t& g, uint8_t& b);
 
@@ -32,7 +32,7 @@ public:
 	void DebugSinglePath(size_t n);
 
 private:
-	void DrawIconImpl(vectoricon::Icon const& icon);
+	void DrawIconImpl(vectoricon::Icon const& icon, size_t palidx);
 
 	std::pair<const Gdiplus::PointF*, INT>
 		convertPoints(std::vector<vectoricon::Point> const& pts);

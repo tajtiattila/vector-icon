@@ -11,7 +11,7 @@ func simplify_svg(project Project) error {
 	inkscape := NewInkscapeShell()
 	defer inkscape.Close()
 
-	for _, sub := range project.SizeDirs {
+	for _, sub := range project.SizeDir {
 		sd := filepath.Join(project.IconDir, sub)
 		td := filepath.Join(project.IntermediateDir, sub)
 

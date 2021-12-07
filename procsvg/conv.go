@@ -10,29 +10,52 @@ import (
 	"strings"
 )
 
-func ConvertSvg(fn string, project Project) (*ProgImage, []color.NRGBA, error) {
-	f, err := os.Open(fn)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer f.Close()
-
-	svg, err := xmlTree(f)
-	if err != nil {
-		return nil, nil, err
-	}
+func ConvertSvg(fn string, eps float64, palette []color.NRGBA) (*ProgImage, error) {
 	//pathSort(svg)
 
-	cm, err := project.ColorMap()
+	svg, err := fileXmlTree(fn)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
+	}
+
+	cm := make(map[color.NRGBA]int)
+	for i, c := range palette {
+		cm[c] = i
 	}
 
 	g := svgprog{fn: fn, colormap: cm}
-	g.mem.Precision = project.Epsilon
+	g.mem.Precision = eps
 	g.tree(svg)
 
-	return g.finish(), g.colors, nil
+	return g.finish(), nil
+}
+
+func CollectSvgColors(fn string, m map[color.NRGBA]int) error {
+	svg, err := fileXmlTree(fn)
+	if err != nil {
+		return err
+	}
+	g := svgprog{
+		fn:         fn,
+		colorCount: m,
+	}
+	g.tree(svg)
+	return nil
+}
+
+func fileXmlTree(fn string) (Node, error) {
+	f, err := os.Open(fn)
+	if err != nil {
+		return Node{}, err
+	}
+	defer f.Close()
+
+	node, err := xmlTree(f)
+	if err != nil {
+		return Node{}, err
+	}
+
+	return node, nil
 }
 
 type Node struct {
@@ -107,6 +130,8 @@ func pathSort(n Node) {
 type svgprog struct {
 	fn       string
 	colormap map[color.NRGBA]int
+
+	colorCount map[color.NRGBA]int
 
 	im  *ProgImage
 	mem ProgMem
@@ -215,6 +240,10 @@ func (g *svgprog) handle_fill(n Node) error {
 	c, ok := get_svg_solid_fill(n)
 	if !ok {
 		return fmt.Errorf("can't find fill style")
+	}
+
+	if g.colorCount != nil {
+		g.colorCount[c]++
 	}
 
 	if i, ok := g.colormap[c]; ok {
