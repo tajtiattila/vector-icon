@@ -52,9 +52,23 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		PWSTR pCmdLine, int nCmdShow) {
 
 	{
-		std::ifstream strm("C:/src/rts/head/CLIENT/SRC/RES/rts.iconpk",
-				std::ifstream::in | std::ifstream::binary);
+		std::string fn;
+		wchar_t* p = pCmdLine;
+		while (*p != 0) {
+			fn.push_back((char)(uint8_t)(*p++));
+		}
+		if (fn.empty()) {
+			MessageBox(nullptr, L"No icon pack specified.", L"Error", MB_OK|MB_ICONSTOP);
+			return 0;
+		}
+		std::ifstream strm(fn, std::ifstream::in | std::ifstream::binary);
+		if (!strm.good()) {
+			MessageBox(nullptr, L"Error opening icon pack.", L"Error", MB_OK|MB_ICONSTOP);
+			return 0;
+		}
+
 		if (!g_window.pack.load(strm)) {
+			MessageBox(nullptr, L"Error loading icon pack.", L"Error", MB_OK|MB_ICONSTOP);
 			return 0;
 		}
 	}
