@@ -199,7 +199,15 @@ bool Pack::load(std::istream& strm) {
 	return true;
 }
 
-const Icon* Pack::find(std::string const& name) const {
+Icon Pack::at(size_t i) const {
+  if (i >= icons_.size()) {
+    return nullptr;
+  }
+
+  return icons_[i];
+}
+
+Icon Pack::find(std::string const& name) const {
 	auto it = nameToIndex_.find(name);
 	if (it == nameToIndex_.end()) {
 		return nullptr;
@@ -210,7 +218,7 @@ const Icon* Pack::find(std::string const& name) const {
 		return nullptr;
 	}
 
-	return &icons_[i];
+	return icons_[i];
 }
 
 namespace detail {
@@ -344,7 +352,6 @@ void drawImage(IconData const& icon, size_t paletteIndex,
 	while (pm.good()) {
 		size_t opPos = pm.pos();
 		uint8_t op = pm.byte();
-		uint8_t t = op & 0xf0;
 		switch (op & 0xf0) {
 		case 0x00:
 			z();

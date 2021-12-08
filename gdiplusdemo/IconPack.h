@@ -1,3 +1,5 @@
+#ifndef ICONPACK_H_INCLUDED_
+#define ICONPACK_H_INCLUDED_
 
 #include <cstdint>
 #include <istream>
@@ -34,9 +36,12 @@ struct IconData {
 
 class Icon {
 public:
+	Icon(std::nullptr_t) { }
 	Icon(std::shared_ptr<IconData> d0) : d(d0) { }
 
 	std::string Name() const { return d != nullptr ? d->name : ""; }
+
+	operator bool() const { return d.get() != nullptr; }
 
 	void Draw(DrawEngine* eng, uint16_t dx, uint16_t dy, size_t paletteIndex = 0) const;
 
@@ -51,9 +56,10 @@ public:
 	auto begin() const { return icons_.begin(); }
 	auto end()   const { return icons_.end(); }
 
-	const Icon* find(std::string const& name) const;
-
+	Icon at(size_t idx) const;
 	size_t size() const { return icons_.size(); }
+
+	Icon find(std::string const& name) const;
 
 private:
 	std::vector<Icon> icons_;
@@ -134,3 +140,5 @@ private:
 } // end namespace
 
 } // end namespace vectoricon
+
+#endif // ICONPACK_H_INCLUDED_

@@ -162,7 +162,7 @@ void GdiPlusIconEngine::DrawIcon(HDC hdc, RECT const* rr,
 void GdiPlusIconEngine::DrawIconImpl(vectoricon::Icon const& icon, size_t palidx) {
 	m_currentPathIdx = 1;
 
-	icon.Draw(this, m_dx, m_dy, palidx);
+	icon.Draw(this, (uint16_t)m_dx, (uint16_t)m_dy, palidx);
 }
 
 void GdiPlusIconEngine::DebugSinglePath(size_t n) {
