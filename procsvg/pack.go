@@ -198,7 +198,6 @@ func lessColor(ci, cj color.NRGBA) bool {
 
 func applyTransforms(project Project, p0 []color.NRGBA) [][]color.NRGBA {
 	pv := [][]color.NRGBA{p0}
-	fmt.Printf("%+v\n", project.ColorTransform)
 	for _, tr := range project.ColorTransform {
 		var px []color.NRGBA
 		for _, c := range p0 {
