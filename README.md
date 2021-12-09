@@ -13,6 +13,11 @@ procsvg
 Procsvg processes svg files using Inkspace (object/stroke to path conversion)
 and generates binary icon packs.
 
+Inkscape 1.2 from December 2012 or later is required for procsvg to work.
+
+If the `inkspace` is not in `PATH`, the environment variable
+`PROCSVG_INKSCAPE` needs to be set.
+
 Details of icon packs such as location of source icons and
 the target icon pack file can be specified in TOML project files.
 
