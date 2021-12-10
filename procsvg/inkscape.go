@@ -30,12 +30,12 @@ func NewInkscapeShell() *InkscapeShell {
 		c.Stdout = os.Stdout
 	}
 
-	w, err := c.StdinPipe()
+	si, err := c.StdinPipe()
 	if err != nil {
 		return &InkscapeShell{err: fmt.Errorf("Error setting up stdin pipe: %w", err)}
 	}
 
-	return &InkscapeShell{cmd: c, stdin: w}
+	return &InkscapeShell{cmd: c, stdin: si}
 }
 
 func (is *InkscapeShell) Err() error {
@@ -65,7 +65,9 @@ func (is *InkscapeShell) Cmd(cmd string) {
 		return
 	}
 
-	fmt.Fprintln(is.stdin, cmd)
+	if _, err := fmt.Fprintln(is.stdin, cmd); err != nil {
+		is.err = err
+	}
 }
 
 func (is *InkscapeShell) Cmdf(format string, args ...interface{}) {
@@ -76,7 +78,7 @@ func (is *InkscapeShell) Cmdf(format string, args ...interface{}) {
 	if !strings.HasSuffix(format, "\n") {
 		format += "\n"
 	}
-	fmt.Fprintf(is.stdin, format, args...)
+	is.Cmd(fmt.Sprintf(format, args...))
 }
 
 func (is *InkscapeShell) Close() error {
