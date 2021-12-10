@@ -11,12 +11,15 @@ var cli struct {
 	rebuild bool
 	verbose bool
 	disasm  bool
+
+	inkscape string
 }
 
 func main() {
-	flag.BoolVar(&cli.rebuild, "r", false, "rebuild all icons")
+	flag.BoolVar(&cli.rebuild, "r", false, "rebuild intermediate icons")
 	flag.BoolVar(&cli.verbose, "v", false, "verbose operation")
-	flag.BoolVar(&cli.disasm, "a", false, "write assembly")
+	flag.BoolVar(&cli.disasm, "disasm", false, "write disassembly")
+	flag.StringVar(&cli.inkscape, "inkscape", "", "inkscape path (default: $PROCSVG_INKSCAPE or $PATH)")
 	flag.Parse()
 
 	if flag.NArg() == 0 {

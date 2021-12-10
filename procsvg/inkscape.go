@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -13,8 +14,9 @@ type InkscapeShell struct {
 	started bool
 	err     error
 
-	cmd   *exec.Cmd
-	stdin io.WriteCloser
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stdout *bufio.Scanner
 }
 
 func NewInkscapeShell() *InkscapeShell {
@@ -26,16 +28,18 @@ func NewInkscapeShell() *InkscapeShell {
 	c := exec.Command(ib, "--shell")
 
 	c.Stderr = os.Stderr
-	if cli.verbose {
-		c.Stdout = os.Stdout
-	}
 
 	si, err := c.StdinPipe()
 	if err != nil {
 		return &InkscapeShell{err: fmt.Errorf("Error setting up stdin pipe: %w", err)}
 	}
 
-	return &InkscapeShell{cmd: c, stdin: si}
+	so, err := c.StdoutPipe()
+	if err != nil {
+		return &InkscapeShell{err: fmt.Errorf("Error setting up stdout pipe: %w", err)}
+	}
+
+	return &InkscapeShell{cmd: c, stdin: si, stdout: bufio.NewScanner(so)}
 }
 
 func (is *InkscapeShell) Err() error {
@@ -65,7 +69,19 @@ func (is *InkscapeShell) Cmd(cmd string) {
 		return
 	}
 
+	if !strings.HasSuffix(cmd, "\n") {
+		cmd += "\n"
+	}
 	if _, err := fmt.Fprintln(is.stdin, cmd); err != nil {
+		is.err = err
+		return
+	}
+
+	cmd = strings.TrimRight(cmd, "\n")
+	if i := strings.LastIndexByte(cmd, '\n'); i > 0 {
+		cmd = cmd[i+1:]
+	}
+	if err := is.sync("> " + cmd); err != nil {
 		is.err = err
 	}
 }
@@ -75,9 +91,6 @@ func (is *InkscapeShell) Cmdf(format string, args ...interface{}) {
 		return
 	}
 
-	if !strings.HasSuffix(format, "\n") {
-		format += "\n"
-	}
 	is.Cmd(fmt.Sprintf(format, args...))
 }
 
@@ -86,7 +99,10 @@ func (is *InkscapeShell) Close() error {
 	if is.started {
 		is.Cmd("quit")
 		is.stdin.Close()
-		err = is.cmd.Wait()
+		err = is.sync("")
+		if xerr := is.cmd.Wait(); err == nil {
+			err = xerr
+		}
 	}
 
 	if is.err != nil {
@@ -94,6 +110,22 @@ func (is *InkscapeShell) Close() error {
 	}
 
 	return err
+}
+
+func (is *InkscapeShell) sync(wantLine string) error {
+	scanner := is.stdout
+
+	for scanner.Scan() {
+		t := scanner.Text()
+		if cli.verbose && t != "> " {
+			fmt.Println(t)
+		}
+		if wantLine != "" && t == wantLine {
+			return nil
+		}
+	}
+
+	return scanner.Err()
 }
 
 func inkscapebin_checked() (string, error) {
@@ -120,6 +152,10 @@ func inkscapebin_checked() (string, error) {
 }
 
 func inkscapebin() (string, error) {
+	if cli.inkscape != "" {
+		return cli.inkscape, nil
+	}
+
 	if v := os.Getenv("PROCSVG_INKSCAPE"); v != "" {
 		return v, nil
 	}
