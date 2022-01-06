@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"image/color"
 	"io"
@@ -148,8 +149,13 @@ func (g *svgprog) finish() *ProgImage {
 	return g.im
 }
 
+var errSkip = errors.New("skip node")
+
 func (g *svgprog) tree(n Node) error {
 	if err := g.node(n); err != nil {
+		if err == errSkip {
+			return nil
+		}
 		return err
 	}
 
@@ -163,6 +169,10 @@ func (g *svgprog) tree(n Node) error {
 }
 
 func (g *svgprog) node(n Node) error {
+	if is_hidden(n) {
+		return errSkip
+	}
+
 	if hasattr(n, "clip-path") {
 		fmt.Fprintf(os.Stderr, "clip-path found in %s\n", g.fn)
 	}
@@ -307,17 +317,23 @@ func findattr(n Node, name string) string {
 	return r
 }
 
-func get_svg_solid_fill(n Node) (color.NRGBA, bool) {
-	fs := findattr(n, "fill")
-	if fs != "" {
-		c, ok := colorfromhex(fs)
-		if ok {
-			return c, true
-		}
+func get_presentation_attr(n Node, attr string) string {
+	if fs := findattr(n, attr); fs != "" {
+		return fs
 	}
 
 	style := cssdecode(findattr(n, "style"))
-	return colorfromhex(style["fill"])
+	return style["fill"]
+}
+
+func get_svg_solid_fill(n Node) (color.NRGBA, bool) {
+	a := get_presentation_attr(n, "fill")
+	return colorfromhex(a)
+}
+
+func is_hidden(n Node) bool {
+	a := get_presentation_attr(n, "display")
+	return a == "none"
 }
 
 func colorfromhex(s string) (color.NRGBA, bool) {
