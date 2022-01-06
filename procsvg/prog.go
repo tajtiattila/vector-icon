@@ -20,11 +20,13 @@ type ProgMem struct {
 	Precision float64
 
 	inPath bool
+	xform  Matrix
 }
 
 func NewProgMem(prec float64) *ProgMem {
 	return &ProgMem{
 		Precision: prec,
+		xform:     MatrixIdentity,
 	}
 }
 
@@ -55,8 +57,9 @@ func (m *ProgMem) ViewBox(l, t, r, b float64) {
 	m.Coord(b)
 }
 
-func (m *ProgMem) BeginPath() {
+func (m *ProgMem) BeginPath(xform Matrix) {
 	m.inPath = false
+	m.xform = xform
 }
 
 func (m *ProgMem) PathCmd(c PathCmd) error {
@@ -120,8 +123,9 @@ func (m *ProgMem) addOp(cmd byte, baseop byte, maxrep, mod int, pts []Point) err
 
 func (m *ProgMem) Pts(v []Point) {
 	for _, p := range v {
-		m.Coord(p.X)
-		m.Coord(p.Y)
+		q := m.xform.Transform(p)
+		m.Coord(q.X)
+		m.Coord(q.Y)
 	}
 }
 

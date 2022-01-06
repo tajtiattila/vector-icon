@@ -25,9 +25,9 @@ func ConvertSvg(fn string, eps float64, palette []color.NRGBA) (*ProgImage, erro
 
 	g := svgprog{fn: fn, colormap: cm}
 	g.mem.Precision = eps
-	g.tree(svg)
+	err = g.tree(svg)
 
-	return g.finish(), nil
+	return g.finish(), err
 }
 
 func CollectSvgColors(fn string, m map[color.NRGBA]int) error {
@@ -136,6 +136,8 @@ type svgprog struct {
 	im  *ProgImage
 	mem ProgMem
 
+	xform []Matrix
+
 	// non-palette colors
 	colors []color.NRGBA
 }
@@ -165,7 +167,12 @@ func (g *svgprog) node(n Node) error {
 		fmt.Fprintf(os.Stderr, "clip-path found in %s\n", g.fn)
 	}
 	if hasattr(n, "transform") {
-		fmt.Fprintf(os.Stderr, "transform found in %s\n", g.fn)
+		mat, err := SvgTransformMatrix(findattr(n, "transform"))
+		if err != nil {
+			return fmt.Errorf("transform: %w", err)
+		}
+		g.pushTransform(g.transform().Mul(mat))
+		defer g.popTransform()
 	}
 
 	var err error
@@ -226,7 +233,7 @@ func (g *svgprog) path(n Node) error {
 		return err
 	}
 
-	g.mem.BeginPath()
+	g.mem.BeginPath(g.transform())
 	for _, c := range cmds {
 		if err := g.mem.PathCmd(c); err != nil {
 			return err
@@ -234,6 +241,23 @@ func (g *svgprog) path(n Node) error {
 	}
 
 	return nil
+}
+
+func (g *svgprog) transform() Matrix {
+	n := len(g.xform)
+	if n == 0 {
+		return MatrixIdentity
+	}
+	return g.xform[n-1]
+}
+
+func (g *svgprog) pushTransform(m Matrix) {
+	g.xform = append(g.xform, m)
+}
+
+func (g *svgprog) popTransform() {
+	n := len(g.xform)
+	g.xform = g.xform[:n-1]
 }
 
 func (g *svgprog) handle_fill(n Node) error {
