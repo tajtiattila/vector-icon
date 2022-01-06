@@ -9,6 +9,7 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+// Project represents a procsvg project.
 type Project struct {
 	// source svg icon dir relative to project file
 	IconDir string
@@ -35,14 +36,44 @@ type Project struct {
 
 	// target relative to project file
 	Target string
+
+	// source file to generate
+	GenerateSource []GenSrc
 }
 
+// DefaultProject contains default project attributes.
 var DefaultProject = Project{
 	IconDir:         "icons",
 	IntermediateDir: "intermediate",
 	SizeDir:         []string{"."},
 	Epsilon:         1e-4,
 	Target:          "icons.iconpk",
+}
+
+// GenSrc holds source generation details.
+type GenSrc struct {
+	Path     string
+	Template string
+
+	// IDPrefix is an optional prefix for generated IDs.
+	IDPrefix string
+
+	// BaseIndex is the index assigned to the first icon.
+	BaseIndex int
+}
+
+// TemplateData is the template data used by GenSrc.Template.
+type TemplateData struct {
+	BaseIndex int // GenSrc.BaseIndex
+
+	Icons []TemplateIcon // icons from the generated icon pack
+}
+
+type TemplateIcon struct {
+	ID     string // identifier generated from the name
+	Name   string // icon name
+	Quoted string // quoted name
+	Index  int    // icon index
 }
 
 type ProjectColor color.NRGBA

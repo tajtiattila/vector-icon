@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"text/template"
 )
 
 var byteOrder = binary.LittleEndian
@@ -59,6 +60,22 @@ func pack_project(project Project) error {
 		k.Add(pe)
 	}
 
+	if err := do_pack_disasm(project, k, pal0, colorStats); err != nil {
+		return err
+	}
+
+	for _, gs := range project.GenerateSource {
+		if err := do_gen_src(gs, k); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func do_pack_disasm(project Project, k IconPack,
+	pal0 []color.NRGBA, colorStats map[color.NRGBA]int) error {
+
 	f, err := os.Create(project.Target)
 	if err != nil {
 		return err
@@ -107,9 +124,95 @@ func pack_project(project Project) error {
 		w = f
 	}
 
-	k.WriteTo(w)
+	_, err = k.WriteTo(w)
+	return err
+}
 
-	return nil
+func do_gen_src(gs GenSrc, k IconPack) error {
+	tpl, err := template.New("src").Parse(gs.Template)
+	if err != nil {
+		return err
+	}
+
+	data := TemplateData{
+		BaseIndex: gs.BaseIndex,
+		Icons:     make([]TemplateIcon, len(k.elem)),
+	}
+
+	for i, e := range k.elem {
+		data.Icons[i] = TemplateIcon{
+			ID:     makeid(gs.IDPrefix, e.Name),
+			Name:   e.Name,
+			Quoted: quoted(e.Name),
+			Index:  gs.BaseIndex + i,
+		}
+	}
+
+	f, err := os.Create(gs.Path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	return tpl.Execute(f, data)
+}
+
+func makeid(prefix, name string) string {
+	if name == "" {
+		if prefix != "" {
+			return prefix
+		} else {
+			return "empty"
+		}
+	}
+
+	var sb strings.Builder
+	if prefix != "" {
+		sb.WriteString(prefix)
+	} else {
+		if !isidstart(name[0]) {
+			sb.WriteRune('_')
+		}
+	}
+	for _, r := range name {
+		if isidrune(r) {
+			sb.WriteRune(r)
+		} else {
+			sb.WriteRune('_')
+		}
+	}
+	return sb.String()
+}
+
+func isidrune(r rune) bool {
+	if r > 256 {
+		return true
+	}
+	c := byte(r)
+	return isidstart(c) || ('0' <= c && c <= '9')
+}
+
+func isidstart(c byte) bool {
+	return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || c == '_'
+}
+
+func quoted(s string) string {
+	var sb strings.Builder
+	sb.WriteByte('"')
+	for _, r := range s {
+		switch {
+		case r < 32 || (127 <= r && r < 160):
+			fmt.Fprintf(&sb, `\x%02d`, int(r))
+		case r == '"':
+			sb.WriteString(`\"`)
+		case r == '\\':
+			sb.WriteString(`\\`)
+		default:
+			sb.WriteRune(r)
+		}
+	}
+	sb.WriteByte('"')
+	return sb.String()
 }
 
 type iconFile struct {
