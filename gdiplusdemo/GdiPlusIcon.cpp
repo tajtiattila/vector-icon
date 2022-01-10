@@ -78,6 +78,27 @@ public:
 		::DeleteObject(hdcSrc);
 	}
 
+	HICON CreateIcon() {
+		HBITMAP mask = ::CreateBitmap(dx, dy, 1, 1, nullptr);
+		if (mask == nullptr) {
+			return nullptr;
+		}
+
+		ICONINFO iconInfo{
+			TRUE,     // fIcon
+				0,        // xHotspot
+				0,        // yHotspot
+				mask,     // hbmMask
+				hbitmap_  // hbmColor
+		};
+
+		HICON icon = ::CreateIconIndirect(&iconInfo);
+
+		::DeleteObject(mask);
+
+		return icon;
+	}
+
 	Gdiplus::Graphics& Graphics() { return graphics_; }
 
 	int Dx() const { return dx; }
@@ -136,10 +157,30 @@ void GdiPlusIconEngine::DrawIconDirect(HDC hdc, RECT const* rr,
 void GdiPlusIconEngine::DrawIcon(HDC hdc, RECT const* rr,
 		vectoricon::Icon const& icon, size_t palidx) {
 	RECT const& r = *rr;
+	SIZE sz{
+		r.right - r.left, // cx
+			r.bottom - r.top  // cy
+	};
+	auto& buf = DrawIconBuf(sz, icon, palidx);
+
+	buf.DrawImage(hdc, r.left, r.top);
+}
+
+// CreateBitmapIcon creates a new bitmap icon using the specified size.
+// The icon should be destroyed with ::DestroyIcon when it is no longer in use.
+HICON GdiPlusIconEngine::CreateBitmapIcon(SIZE sz,
+		vectoricon::Icon const& icon, size_t palidx) {
+	auto& buf = DrawIconBuf(sz, icon, palidx);
+
+	return buf.CreateIcon();
+}
+
+GdiPlusIconEngine::DIBBuf& GdiPlusIconEngine::DrawIconBuf(SIZE size,
+		vectoricon::Icon const& icon, size_t palidx) {
 	m_ox = 0;
 	m_oy = 0;
-	m_dx = r.right - r.left;
-	m_dy = r.bottom - r.top;
+	m_dx = size.cx;
+	m_dy = size.cy;
 
 	uint32_t sz = (uint32_t(m_dx)<<16) | uint32_t(m_dy);
 	auto it = m_dibs.find(sz);
@@ -156,7 +197,7 @@ void GdiPlusIconEngine::DrawIcon(HDC hdc, RECT const* rr,
 	DrawIconImpl(icon, palidx);
 
 	buf.CopyBits();
-	buf.DrawImage(hdc, r.left, r.top);
+	return buf;
 }
 
 void GdiPlusIconEngine::DrawIconImpl(vectoricon::Icon const& icon, size_t palidx) {

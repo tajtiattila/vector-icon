@@ -18,6 +18,8 @@ public:
 	void DrawIconDirect(HDC hdc, RECT const* r, vectoricon::Icon const& icon, size_t palidx = 0);
 	void DrawIconEx(bool direct, HDC hdc, RECT const* r, vectoricon::Icon const& icon, size_t palidx = 0);
 
+	HICON CreateBitmapIcon(SIZE size, vectoricon::Icon const& icon, size_t palidx = 0);
+
 	virtual void Colorize(uint8_t& r, uint8_t& g, uint8_t& b);
 
 	// vectoricon::DrawEngine overrides
@@ -32,13 +34,15 @@ public:
 	void DebugSinglePath(size_t n);
 
 private:
+	class DIBBuf;
+
+	DIBBuf& DrawIconBuf(SIZE size, vectoricon::Icon const& icon, size_t palidx);
 	void DrawIconImpl(vectoricon::Icon const& icon, size_t palidx);
 
 	std::pair<const Gdiplus::PointF*, INT>
 		convertPoints(std::vector<vectoricon::Point> const& pts);
 
 private:
-	class DIBBuf;
 	std::unordered_map<uint32_t, std::shared_ptr<DIBBuf>> m_dibs;
 
 	Gdiplus::Graphics* m_gr;
