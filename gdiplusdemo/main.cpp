@@ -14,16 +14,28 @@ class ColorizerIconEngine : public GdiPlusIconEngine {
 public:
 	void Colorize(uint8_t &r, uint8_t &g, uint8_t &b) override;
 
+	bool IsDarkMode() const { return GetPaletteIndex() == 1; }
+
 	static constexpr COLORREF lightbk = RGB(192, 192, 192);
 	static constexpr COLORREF darkbk = RGB(64, 64, 64);
 
-	bool darkMode = false;
 	bool grayMode = false;
 	int colorMode = 0;
 };
 
 class Window {
 public:
+	Window() {
+		for (int i = 0; i <= 5; i++) {
+			colorizePalette.push_back({
+					uint8_t(255-i*32), // r
+					uint8_t(192-i*16), // g
+					uint8_t(64-i*5),   // b
+					255,               // a
+				});
+		}
+	}
+
 	void Invalidate();
 
 	void OnKeyDown(WPARAM);
@@ -33,6 +45,8 @@ public:
 	ColorizerIconEngine* eng = nullptr;
 	vectoricon::Pack pack;
 
+	vectoricon::Palette colorizePalette;
+
 	size_t paintSizeIdx = 0;
 	static std::vector<int> paintSizes;
 
@@ -40,6 +54,7 @@ public:
 	int singleIconIdx = 0;
 	bool brushPattern = false;
 	bool direct_ = false;
+	bool colorize = false;
 };
 
 std::vector<int> Window::paintSizes = {16, 20, 24, 28, 32, 48, 64, 128};
@@ -223,12 +238,20 @@ void Window::OnKeyDown(WPARAM w) {
 		break;
 
 	case 'E':
-		eng->darkMode = !eng->darkMode;
+		eng->SetPaletteIndex(1 - eng->GetPaletteIndex());
 		break;
 
 	case 'R':
 		eng->colorMode = (eng->colorMode + 1) % 3;
 		break;
+
+	case 'C':
+		colorize = !colorize;
+		if (colorize) {
+			eng->SetColorization(colorizePalette);
+		} else {
+			eng->ClearColorization();
+		}
 	}
 
 	Invalidate();
@@ -255,7 +278,7 @@ void ColorizerIconEngine::Colorize(uint8_t &r, uint8_t &g, uint8_t &b) {
 
 	uint8_t y = gray(r, g, b);
 
-	if (!darkMode) {
+	if (!IsDarkMode()) {
 		y = 128 + y/4;
 	} else {
 		y = 64 + y/4;
@@ -269,8 +292,7 @@ void ColorizerIconEngine::Colorize(uint8_t &r, uint8_t &g, uint8_t &b) {
 void Window::OnPaint(HDC dc, int dx, int dy) {
 	RECT rect{0, 0, dx, dy};
 
-	COLORREF bkcolor = eng->darkMode ? eng->darkbk : eng->lightbk;
-	size_t palidx = eng->darkMode ? 1 : 0;
+	COLORREF bkcolor = eng->IsDarkMode() ? eng->darkbk : eng->lightbk;
 	if (brushPattern) {
 		::SetBkColor(dc, bkcolor);
 		HBRUSH hbr = ::CreateHatchBrush(HS_DIAGCROSS, RGB(128, 128, 128));
@@ -293,13 +315,13 @@ void Window::OnPaint(HDC dc, int dx, int dy) {
 	if (i >= 0) {
 		auto it = pack.begin() + i;
 		RECT r{x, y, x+paintSize, y+paintSize};
-		eng->DrawIconEx(direct_, dc, &r, *it, palidx);
+		eng->DrawIconEx(direct_, dc, &r, *it);
 		return;
 	}
 
 	for (auto const& icon : pack) {
 		RECT r{x, y, x+paintSize, y+paintSize};
-		eng->DrawIconEx(direct_, dc, &r, icon, palidx);
+		eng->DrawIconEx(direct_, dc, &r, icon);
 
 		x += paintSize + pad;
 		if (x + paintSize > dx) {

@@ -120,17 +120,17 @@ GdiPlusIconEngine::GdiPlusIconEngine() :
 }
 
 void GdiPlusIconEngine::DrawIconEx(bool direct, HDC hdc, RECT const* rr,
-		vectoricon::Icon const& icon, size_t palidx) {
+		vectoricon::Icon const& icon) {
 	if (direct) {
-		DrawIconDirect(hdc, rr, icon, palidx);
+		DrawIconDirect(hdc, rr, icon);
 	} else {
-		DrawIcon(hdc, rr, icon, palidx);
+		DrawIcon(hdc, rr, icon);
 	}
 }
 
 // DrawIconDirect draws the icon directly on the destination HDC.
 void GdiPlusIconEngine::DrawIconDirect(HDC hdc, RECT const* rr,
-		vectoricon::Icon const& icon, size_t palidx) {
+		vectoricon::Icon const& icon) {
 	using namespace Gdiplus;
 
 	RECT const& r = *rr;
@@ -147,7 +147,7 @@ void GdiPlusIconEngine::DrawIconDirect(HDC hdc, RECT const* rr,
 
 	m_gr = &gr;
 
-	DrawIconImpl(icon, palidx);
+	DrawIconImpl(icon);
 
 	m_gr = nullptr;
 }
@@ -155,13 +155,13 @@ void GdiPlusIconEngine::DrawIconDirect(HDC hdc, RECT const* rr,
 // DrawIcon draws the icon using an internal buffer, eliminating
 // the overhead of initializing graphics objects.
 void GdiPlusIconEngine::DrawIcon(HDC hdc, RECT const* rr,
-		vectoricon::Icon const& icon, size_t palidx) {
+		vectoricon::Icon const& icon) {
 	RECT const& r = *rr;
 	SIZE sz{
 		r.right - r.left, // cx
 			r.bottom - r.top  // cy
 	};
-	auto& buf = DrawIconBuf(sz, icon, palidx);
+	auto& buf = DrawIconBuf(sz, icon);
 
 	buf.DrawImage(hdc, r.left, r.top);
 }
@@ -169,14 +169,14 @@ void GdiPlusIconEngine::DrawIcon(HDC hdc, RECT const* rr,
 // CreateBitmapIcon creates a new bitmap icon using the specified size.
 // The icon should be destroyed with ::DestroyIcon when it is no longer in use.
 HICON GdiPlusIconEngine::CreateBitmapIcon(SIZE sz,
-		vectoricon::Icon const& icon, size_t palidx) {
-	auto& buf = DrawIconBuf(sz, icon, palidx);
+		vectoricon::Icon const& icon) {
+	auto& buf = DrawIconBuf(sz, icon);
 
 	return buf.CreateIcon();
 }
 
 GdiPlusIconEngine::DIBBuf& GdiPlusIconEngine::DrawIconBuf(SIZE size,
-		vectoricon::Icon const& icon, size_t palidx) {
+		vectoricon::Icon const& icon) {
 	m_ox = 0;
 	m_oy = 0;
 	m_dx = size.cx;
@@ -194,16 +194,16 @@ GdiPlusIconEngine::DIBBuf& GdiPlusIconEngine::DrawIconBuf(SIZE size,
 	m_gr->Clear(Gdiplus::Color(0, 0, 0, 0));
 	m_gr->ResetTransform();
 
-	DrawIconImpl(icon, palidx);
+	DrawIconImpl(icon);
 
 	buf.CopyBits();
 	return buf;
 }
 
-void GdiPlusIconEngine::DrawIconImpl(vectoricon::Icon const& icon, size_t palidx) {
+void GdiPlusIconEngine::DrawIconImpl(vectoricon::Icon const& icon) {
 	m_currentPathIdx = 1;
 
-	icon.Draw(this, (uint16_t)m_dx, (uint16_t)m_dy, palidx);
+	icon.Draw(this, (uint16_t)m_dx, (uint16_t)m_dy, m_palIdx, m_colorPalette);
 }
 
 void GdiPlusIconEngine::DebugSinglePath(size_t n) {

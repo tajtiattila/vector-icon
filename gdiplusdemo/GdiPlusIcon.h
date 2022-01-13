@@ -14,11 +14,18 @@ class GdiPlusIconEngine : public vectoricon::DrawEngine {
 public:
 	GdiPlusIconEngine();
 
-	void DrawIcon(HDC hdc, RECT const* r, vectoricon::Icon const& icon, size_t palidx = 0);
-	void DrawIconDirect(HDC hdc, RECT const* r, vectoricon::Icon const& icon, size_t palidx = 0);
-	void DrawIconEx(bool direct, HDC hdc, RECT const* r, vectoricon::Icon const& icon, size_t palidx = 0);
+	size_t GetPaletteIndex() const { return m_palIdx; }
+	void SetPaletteIndex(size_t paletteIndex) { m_palIdx = paletteIndex; }
 
-	HICON CreateBitmapIcon(SIZE size, vectoricon::Icon const& icon, size_t palidx = 0);
+	vectoricon::Palette const& GetColorization() const { return m_colorPalette; }
+	void SetColorization(vectoricon::Palette const& p) { m_colorPalette = p; }
+	void ClearColorization() { m_colorPalette.clear(); }
+
+	void DrawIcon(HDC hdc, RECT const* r, vectoricon::Icon const& icon);
+	void DrawIconDirect(HDC hdc, RECT const* r, vectoricon::Icon const& icon);
+	void DrawIconEx(bool direct, HDC hdc, RECT const* r, vectoricon::Icon const& icon);
+
+	HICON CreateBitmapIcon(SIZE size, vectoricon::Icon const& icon);
 
 	virtual void Colorize(uint8_t& r, uint8_t& g, uint8_t& b);
 
@@ -36,8 +43,8 @@ public:
 private:
 	class DIBBuf;
 
-	DIBBuf& DrawIconBuf(SIZE size, vectoricon::Icon const& icon, size_t palidx);
-	void DrawIconImpl(vectoricon::Icon const& icon, size_t palidx);
+	DIBBuf& DrawIconBuf(SIZE size, vectoricon::Icon const& icon);
+	void DrawIconImpl(vectoricon::Icon const& icon);
 
 	std::pair<const Gdiplus::PointF*, INT>
 		convertPoints(std::vector<vectoricon::Point> const& pts);
@@ -53,6 +60,9 @@ private:
 	vectoricon::Point m_cursor = {0.f, 0.f};
 	bool m_hasPath = false;
 	std::vector<Gdiplus::PointF> m_ptbuf;
+
+	size_t m_palIdx = 0;
+	vectoricon::Palette m_colorPalette;
 
 	size_t m_currentPathIdx = 0;
 	size_t m_debugPathIdx = 0;
