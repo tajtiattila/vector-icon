@@ -44,6 +44,8 @@ public:
 	operator bool() const { return d.get() != nullptr; }
 
 	void Draw(DrawEngine* eng, uint16_t dx, uint16_t dy, size_t paletteIndex = 0) const;
+	void Draw(DrawEngine* eng, uint16_t dx, uint16_t dy,
+			size_t paletteIndex, Palette const& overridePalette) const;
 
 private:
 	std::shared_ptr<IconData> d;

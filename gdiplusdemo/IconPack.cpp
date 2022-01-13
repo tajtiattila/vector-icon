@@ -299,26 +299,14 @@ private:
 	const uint8_t* end;
 };
 
-std::optional<RGBA> paletteColor(IconData const& icon,
-		size_t paletteIndex, size_t colorIndex) {
-	if (icon.palvec == nullptr) {
-		return std::nullopt;
-	}
+class PaletteHandler {
+public:
+	virtual ~PaletteHandler() { }
 
-	auto& v = *icon.palvec;
-	if (paletteIndex >= v.size()) {
-		return std::nullopt;
-	}
+	virtual std::optional<RGBA> At(size_t colorIndex) const = 0;
+};
 
-	auto& w = v[paletteIndex];
-	if (colorIndex >= w.size()) {
-		return std::nullopt;
-	}
-
-	return w[colorIndex];
-}
-
-void drawImage(IconData const& icon, size_t paletteIndex,
+void drawImage(IconData const& icon, PaletteHandler const& paletteHandler,
 	uint32_t ofs, uint32_t sz, DrawEngine* eng) {
 
 	if (size_t(ofs)+size_t(sz) > icon.data.size()) {
@@ -374,7 +362,7 @@ void drawImage(IconData const& icon, size_t paletteIndex,
 			case 0x02: {
 				// Set solid palette fill
 				size_t i = pm.byte();
-				auto oc = paletteColor(icon, paletteIndex, i);
+				auto oc = paletteHandler.At(i);
 				if (!oc) {
 					eng->Error(error::InvalidPaletteIndex{opPos, i});
 					return;
@@ -438,6 +426,74 @@ void drawImage(IconData const& icon, size_t paletteIndex,
 	}
 }
 
+void drawIcon(IconData const& icon, PaletteHandler const& paletteHandler,
+		DrawEngine* eng, uint16_t dx, uint16_t dy)  {
+	if (icon.images.empty()) {
+		eng->Error(error::EmptyImage{});
+		return;
+	}
+
+	for (auto& m : icon.images) {
+		if (m.dx <= dx && m.dy <= dy) {
+			return drawImage(icon, paletteHandler, m.offset, m.size, eng);
+		}
+	}
+
+	auto const& m = icon.images.back();
+	return drawImage(icon, paletteHandler, m.offset, m.size, eng);
+}
+
+class IconPaletteHandler : public PaletteHandler {
+public:
+	IconPaletteHandler(IconData const& icon, size_t paletteIndex) :
+		palette_(GetPalette(icon, paletteIndex)) {
+	}
+
+	std::optional<RGBA> At(size_t colorIndex) const override {
+		if (colorIndex >= palette_.size()) {
+			return std::nullopt;
+		}
+
+		return palette_[colorIndex];
+	}
+
+private:
+	Palette const& palette_;
+
+	Palette const& GetPalette(IconData const& icon, size_t paletteIndex) {
+		static Palette empty;
+		if (icon.palvec == nullptr) {
+			return empty;
+		}
+
+		auto& v = *icon.palvec;
+		if (paletteIndex >= v.size()) {
+			return empty;
+		}
+
+		return v[paletteIndex];
+	}
+};
+
+class OverrideColorPaletteHandler : public IconPaletteHandler {
+public:
+	OverrideColorPaletteHandler(IconData const& icon, size_t paletteIndex,
+			Palette const& overrideColors) :
+		IconPaletteHandler(icon, paletteIndex),
+		overrideColors_(overrideColors) {
+	}
+
+	std::optional<RGBA> At(size_t colorIndex) const override {
+		if (colorIndex < overrideColors_.size()) {
+			return overrideColors_[colorIndex];
+		}
+		return IconPaletteHandler::At(colorIndex);
+	}
+
+private:
+	Palette const& overrideColors_;
+};
+
 } // end namespace detail
 
 namespace error {
@@ -469,19 +525,22 @@ void Icon::Draw(DrawEngine* eng, uint16_t dx, uint16_t dy, size_t paletteIndex) 
 	}
 
 	IconData const& icon = *d;
-	if (icon.images.empty()) {
+	detail::IconPaletteHandler paletteHandler(icon, paletteIndex);
+	return detail::drawIcon(icon, paletteHandler, eng, dx, dy);
+}
+
+void Icon::Draw(DrawEngine* eng, uint16_t dx, uint16_t dy,
+		size_t paletteIndex, Palette const& overridePalette) const {
+	if (d == nullptr) {
+		// empty icon
 		eng->Error(error::EmptyImage{});
 		return;
 	}
 
-	for (auto& m : icon.images) {
-		if (m.dx <= dx && m.dy <= dy) {
-			return detail::drawImage(icon, paletteIndex, m.offset, m.size, eng);
-		}
-	}
-
-	auto const& m = icon.images.back();
-	return detail::drawImage(icon, paletteIndex, m.offset, m.size, eng);
+	IconData const& icon = *d;
+	detail::OverrideColorPaletteHandler paletteHandler(icon,
+		paletteIndex, overridePalette);
+	return detail::drawIcon(icon, paletteHandler, eng, dx, dy);
 }
 
 } // end namespace vectoricon
