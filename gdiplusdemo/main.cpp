@@ -29,8 +29,8 @@ public:
 	void OnKeyDown(WPARAM);
 	void OnPaint(HDC dc, int dx, int dy);
 
-	HWND hwnd;
-	ColorizerIconEngine* eng;
+	HWND hwnd = 0;
+	ColorizerIconEngine* eng = nullptr;
 	vectoricon::Pack pack;
 
 	size_t paintSizeIdx = 0;
@@ -48,8 +48,8 @@ Window g_window;
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
-		PWSTR pCmdLine, int nCmdShow) {
+int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance,
+		_In_ PWSTR pCmdLine, _In_ int nCmdShow) {
 
 	{
 		std::string fn;

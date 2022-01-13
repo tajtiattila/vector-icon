@@ -142,7 +142,7 @@ std::optional<Icon> loadIcon(std::istream& strm, size_t sectSize,
 		return std::nullopt;
 	}
 
-	size_t headerLen = 1 + size_t(nameLen) + 1 + 8*numImages;
+	size_t headerLen = 1 + size_t(nameLen) + 1 + 8*size_t(numImages);
 	size_t dataBytes = sectSize - headerLen;
 
 	icon.data.resize(dataBytes);
@@ -321,7 +321,7 @@ std::optional<RGBA> paletteColor(IconData const& icon,
 void drawImage(IconData const& icon, size_t paletteIndex,
 	uint32_t ofs, uint32_t sz, DrawEngine* eng) {
 
-	if (ofs+sz > icon.data.size()) {
+	if (size_t(ofs)+size_t(sz) > icon.data.size()) {
 		eng->Error(error::EmptyImage{});
 		return;
 	}
