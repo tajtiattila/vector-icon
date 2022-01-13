@@ -76,6 +76,19 @@ type TemplateIcon struct {
 	Index  int    // icon index
 }
 
+// Padding returns a string of spaces needed pads ID to n runes.
+func (i TemplateIcon) Padding(n int) string {
+	nrunes := 0
+	for range i.ID {
+		nrunes++
+	}
+	npad := n - nrunes
+	if npad > 0 {
+		return strings.Repeat(" ", npad)
+	}
+	return ""
+}
+
 type ProjectColor color.NRGBA
 
 func (c *ProjectColor) UnmarshalText(p []byte) error {
