@@ -23,12 +23,14 @@ type Project struct {
 	// Epsilon is the icon conversion precision.
 	Epsilon float64
 
-	// AutoPalette generates the palette automatically,
-	// when there is no default palette.
-	AutoPalette bool
-
-	// Palette defines the default palette.
+	// Palette defines a default palette.
+	// When colors are specified, they appear
+	// at the beginning of the icon pack palette.
 	Palette []ProjectColor
+
+	// AutoPalette generates the palette automatically or
+	// extends the default palette with colors used by the icons.
+	AutoPalette bool
 
 	// ColorTransform defines color transformations.
 	// Each transformation yields a new palette.

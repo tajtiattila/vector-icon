@@ -254,16 +254,17 @@ func findIcons(project Project) ([]iconFile, error) {
 
 func getpalv(project Project, colorStats map[color.NRGBA]int) [][]color.NRGBA {
 
+	var p0 []color.NRGBA
+	defaultColors := make(map[color.NRGBA]struct{})
 	if len(project.Palette) != 0 {
-		var p0 []color.NRGBA
 		for _, c := range project.Palette {
 			p0 = append(p0, color.NRGBA(c))
+			defaultColors[color.NRGBA(c)] = struct{}{}
 		}
-		return applyTransforms(project, p0)
 	}
 
 	if !project.AutoPalette {
-		return nil
+		return applyTransforms(project, p0)
 	}
 
 	type colFreq struct {
@@ -272,6 +273,10 @@ func getpalv(project Project, colorStats map[color.NRGBA]int) [][]color.NRGBA {
 	}
 	var cf []colFreq
 	for c, n := range colorStats {
+		if _, ok := defaultColors[c]; ok {
+			continue // skip color in project palette
+		}
+
 		cf = append(cf, colFreq{c, n})
 	}
 
@@ -282,7 +287,6 @@ func getpalv(project Project, colorStats map[color.NRGBA]int) [][]color.NRGBA {
 		return lessColor(cf[i].c, cf[j].c)
 	})
 
-	var p0 []color.NRGBA
 	for _, c := range cf {
 		p0 = append(p0, c.c)
 	}
