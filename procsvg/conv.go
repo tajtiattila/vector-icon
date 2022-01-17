@@ -12,7 +12,6 @@ import (
 )
 
 func ConvertSvg(fn string, eps float64, palette []color.NRGBA) (*ProgImage, error) {
-	//pathSort(svg)
 
 	svg, err := fileXmlTree(fn)
 	if err != nil {
@@ -108,23 +107,6 @@ func xmlTree(r io.Reader) (Node, error) {
 		return root[0], nil
 	default:
 		return Node{}, fmt.Errorf("Multiple root nodes")
-	}
-}
-
-func pathSort(n Node) {
-	var path, other []Node
-	for _, n := range n.Node {
-		pathSort(n)
-		if n.Name.Local == "path" {
-			path = append(path, n)
-		} else {
-			other = append(other, n)
-		}
-	}
-
-	n.Node = append(n.Node[:0], other...)
-	for i := len(path) - 1; i >= 0; i-- {
-		n.Node = append(n.Node, path[i])
 	}
 }
 
