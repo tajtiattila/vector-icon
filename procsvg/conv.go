@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/xml"
-	"errors"
 	"fmt"
 	"image/color"
 	"io"
@@ -121,6 +120,8 @@ type svgprog struct {
 
 	xform []Matrix
 
+	solidFillColor color.NRGBA
+
 	// non-palette colors
 	colors []color.NRGBA
 }
@@ -131,30 +132,11 @@ func (g *svgprog) finish() *ProgImage {
 	return g.im
 }
 
-var errSkip = errors.New("skip node")
-
 func (g *svgprog) tree(n Node) error {
-	if err := g.node(n); err != nil {
-		if err == errSkip {
-			return nil
-		}
-		return err
-	}
-
-	for _, child := range n.Node {
-		if err := g.tree(child); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (g *svgprog) node(n Node) error {
+	// Handle inherited attributes.
 	if is_hidden(n) {
-		return errSkip
+		return nil
 	}
-
 	if hasattr(n, "clip-path") {
 		fmt.Fprintf(os.Stderr, "clip-path found in %s\n", g.fn)
 	}
@@ -166,7 +148,15 @@ func (g *svgprog) node(n Node) error {
 		g.pushTransform(g.transform().Mul(mat))
 		defer g.popTransform()
 	}
+	if fill, ok := get_svg_solid_fill(n); ok {
+		oldFill := g.solidFillColor
+		g.solidFillColor = fill
+		defer func() {
+			g.solidFillColor = oldFill
+		}()
+	}
 
+	// Handle nodes of interest.
 	var err error
 	switch n.Name.Local {
 	case "svg":
@@ -175,8 +165,18 @@ func (g *svgprog) node(n Node) error {
 	case "path":
 		err = g.path(n)
 	}
+	if err != nil {
+		return err
+	}
 
-	return err
+	// Handle node children.
+	for _, child := range n.Node {
+		if err := g.tree(child); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (g *svgprog) svg(n Node) error {
@@ -221,9 +221,7 @@ func (g *svgprog) path(n Node) error {
 		return nil
 	}
 
-	if err := g.handle_fill(n); err != nil {
-		return err
-	}
+	g.handle_fill()
 
 	g.mem.BeginPath(g.transform())
 	for _, c := range cmds {
@@ -252,11 +250,8 @@ func (g *svgprog) popTransform() {
 	g.xform = g.xform[:n-1]
 }
 
-func (g *svgprog) handle_fill(n Node) error {
-	c, ok := get_svg_solid_fill(n)
-	if !ok {
-		return fmt.Errorf("can't find fill style")
-	}
+func (g *svgprog) handle_fill() {
+	c := g.solidFillColor
 
 	if g.colorCount != nil {
 		g.colorCount[c]++
@@ -271,8 +266,6 @@ func (g *svgprog) handle_fill(n Node) error {
 		g.mem.Byte(0x01)
 		g.mem.Color(c)
 	}
-
-	return nil
 }
 
 func hasattr(n Node, name string) bool {
