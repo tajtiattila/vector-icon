@@ -208,6 +208,14 @@ func (g *svgprog) svg(n Node) error {
 }
 
 func (g *svgprog) path(n Node) error {
+	c := g.solidFillColor
+	if c.A == 0 {
+		if cli.verbose {
+			fmt.Println("skipping invisible path")
+		}
+		return nil
+	}
+
 	cmds, err := PathDCmds(findattr(n, "d"))
 	if err != nil {
 		return err
@@ -293,16 +301,20 @@ func findattr(n Node, name string) string {
 }
 
 func get_presentation_attr(n Node, attr string) string {
-	if fs := findattr(n, attr); fs != "" {
-		return fs
+	style := cssdecode(findattr(n, "style"))
+	if v, ok := style[attr]; ok {
+		return v
 	}
 
-	style := cssdecode(findattr(n, "style"))
-	return style["fill"]
+	return findattr(n, attr)
 }
 
 func get_svg_solid_fill(n Node) (color.NRGBA, bool) {
 	a := get_presentation_attr(n, "fill")
+	if a == "none" {
+		return color.NRGBA{0, 0, 0, 0}, true
+	}
+
 	return colorfromhex(a)
 }
 
