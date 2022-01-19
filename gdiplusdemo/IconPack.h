@@ -3,8 +3,9 @@
 
 #include <cstdint>
 #include <istream>
-#include <vector>
+#include <optional>
 #include <string>
+#include <vector>
 #include <unordered_map>
 
 namespace vectoricon {
@@ -34,6 +35,14 @@ struct IconData {
 	std::shared_ptr<PaletteVector> palvec;
 };
 
+// ColorOverride returns override colors.
+class ColorOverride {
+public:
+	virtual ~ColorOverride() { }
+
+	virtual std::optional<RGBA> At(size_t colorIndex) const = 0;
+};
+
 class Icon {
 public:
 	Icon(std::nullptr_t) { }
@@ -45,7 +54,7 @@ public:
 
 	void Draw(DrawEngine* eng, uint16_t dx, uint16_t dy, size_t paletteIndex = 0) const;
 	void Draw(DrawEngine* eng, uint16_t dx, uint16_t dy,
-			size_t paletteIndex, Palette const& overridePalette) const;
+			size_t paletteIndex, ColorOverride const& colorOverride) const;
 
 private:
 	std::shared_ptr<IconData> d;

@@ -17,9 +17,7 @@ public:
 	size_t GetPaletteIndex() const { return m_palIdx; }
 	void SetPaletteIndex(size_t paletteIndex) { m_palIdx = paletteIndex; }
 
-	vectoricon::Palette const& GetColorization() const { return m_colorPalette; }
-	void SetColorization(vectoricon::Palette const& p) { m_colorPalette = p; }
-	void ClearColorization() { m_colorPalette.clear(); }
+	void SetColorization(vectoricon::ColorOverride* co) { m_colorOverride = co; }
 
 	void DrawIcon(HDC hdc, RECT const* r, vectoricon::Icon const& icon);
 	void DrawIconDirect(HDC hdc, RECT const* r, vectoricon::Icon const& icon);
@@ -62,7 +60,7 @@ private:
 	std::vector<Gdiplus::PointF> m_ptbuf;
 
 	size_t m_palIdx = 0;
-	vectoricon::Palette m_colorPalette;
+	vectoricon::ColorOverride* m_colorOverride = nullptr;
 
 	size_t m_currentPathIdx = 0;
 	size_t m_debugPathIdx = 0;

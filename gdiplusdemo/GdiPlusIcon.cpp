@@ -203,7 +203,11 @@ GdiPlusIconEngine::DIBBuf& GdiPlusIconEngine::DrawIconBuf(SIZE size,
 void GdiPlusIconEngine::DrawIconImpl(vectoricon::Icon const& icon) {
 	m_currentPathIdx = 1;
 
-	icon.Draw(this, (uint16_t)m_dx, (uint16_t)m_dy, m_palIdx, m_colorPalette);
+	if (m_colorOverride == nullptr) {
+		icon.Draw(this, (uint16_t)m_dx, (uint16_t)m_dy, m_palIdx);
+	} else {
+		icon.Draw(this, (uint16_t)m_dx, (uint16_t)m_dy, m_palIdx, *m_colorOverride);
+	}
 }
 
 void GdiPlusIconEngine::DebugSinglePath(size_t n) {

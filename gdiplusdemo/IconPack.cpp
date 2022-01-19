@@ -1,7 +1,6 @@
 
 #include "IconPack.h"
 
-#include <optional>
 #include <sstream>
 
 namespace vectoricon {
@@ -478,20 +477,21 @@ private:
 class OverrideColorPaletteHandler : public IconPaletteHandler {
 public:
 	OverrideColorPaletteHandler(IconData const& icon, size_t paletteIndex,
-			Palette const& overrideColors) :
+			ColorOverride const& colorOverride) :
 		IconPaletteHandler(icon, paletteIndex),
-		overrideColors_(overrideColors) {
+		colorOverride_(colorOverride) {
 	}
 
 	std::optional<RGBA> At(size_t colorIndex) const override {
-		if (colorIndex < overrideColors_.size()) {
-			return overrideColors_[colorIndex];
+		auto c = colorOverride_.At(colorIndex);
+		if (c != std::nullopt) {
+			return c;
 		}
 		return IconPaletteHandler::At(colorIndex);
 	}
 
 private:
-	Palette const& overrideColors_;
+	ColorOverride const& colorOverride_;
 };
 
 } // end namespace detail
@@ -530,7 +530,7 @@ void Icon::Draw(DrawEngine* eng, uint16_t dx, uint16_t dy, size_t paletteIndex) 
 }
 
 void Icon::Draw(DrawEngine* eng, uint16_t dx, uint16_t dy,
-		size_t paletteIndex, Palette const& overridePalette) const {
+		size_t paletteIndex, ColorOverride const& colorOverride) const {
 	if (d == nullptr) {
 		// empty icon
 		eng->Error(error::EmptyImage{});
@@ -539,7 +539,7 @@ void Icon::Draw(DrawEngine* eng, uint16_t dx, uint16_t dy,
 
 	IconData const& icon = *d;
 	detail::OverrideColorPaletteHandler paletteHandler(icon,
-		paletteIndex, overridePalette);
+		paletteIndex, colorOverride);
 	return detail::drawIcon(icon, paletteHandler, eng, dx, dy);
 }
 

@@ -23,11 +23,23 @@ public:
 	int colorMode = 0;
 };
 
+class PaletteColorOverride : public vectoricon::ColorOverride {
+public:
+	std::optional<vectoricon::RGBA> At(size_t idx) const {
+		if (idx < palette.size()) {
+			return palette[idx];
+		}
+		return std::nullopt;
+	}
+
+	vectoricon::Palette palette;
+};
+
 class Window {
 public:
 	Window() {
 		for (int i = 0; i <= 5; i++) {
-			colorizePalette.push_back({
+			colorizer.palette.push_back({
 					uint8_t(255-i*32), // r
 					uint8_t(192-i*16), // g
 					uint8_t(64-i*5),   // b
@@ -45,7 +57,7 @@ public:
 	ColorizerIconEngine* eng = nullptr;
 	vectoricon::Pack pack;
 
-	vectoricon::Palette colorizePalette;
+	PaletteColorOverride colorizer;
 
 	size_t paintSizeIdx = 0;
 	static std::vector<int> paintSizes;
@@ -248,9 +260,9 @@ void Window::OnKeyDown(WPARAM w) {
 	case 'C':
 		colorize = !colorize;
 		if (colorize) {
-			eng->SetColorization(colorizePalette);
+			eng->SetColorization(&colorizer);
 		} else {
-			eng->ClearColorization();
+			eng->SetColorization(nullptr);
 		}
 	}
 
