@@ -233,6 +233,10 @@ func findIcons(project Project) ([]iconFile, error) {
 		for _, fn := range svgs {
 			name := strings.TrimSuffix(fn, ".svg")
 
+			if project.NameFormat != "" {
+				name = fmt.Sprintf(project.NameFormat, name)
+			}
+
 			path := filepath.Join(dir, fn)
 			m[name] = append(m[name], path)
 		}

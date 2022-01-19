@@ -17,8 +17,13 @@ type Project struct {
 	// size subdirs for icons with multiple sizes or levels of detail
 	SizeDir []string
 
-	// intermediate dir relative to project file
+	// IntermediateDir relative to project file for preprocessing
+	// SVG files using inkcape.
 	IntermediateDir string
+
+	// NameFormat is an optional fmt.Printf format to generate
+	// process icon names and ID strings from the file name.
+	NameFormat string
 
 	// Epsilon is the icon conversion precision.
 	Epsilon float64
