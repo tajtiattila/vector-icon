@@ -37,6 +37,12 @@ type Project struct {
 	// extends the default palette with colors used by the icons.
 	AutoPalette bool
 
+	// ColorMagnet changes colors in SVG to colors in the palette
+	// if the distance in RGB space between a color in SVG
+	// and a color in the palette is smaller than ColorMagnet.
+	// Its default value is 0.
+	ColorMagnet float64
+
 	// ColorTransform defines color transformations.
 	// Each transformation yields a new palette.
 	ColorTransform []ColorTransform

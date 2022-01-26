@@ -21,15 +21,24 @@ func pack_project(project Project) error {
 		return err
 	}
 
+	// Collect SVG colors
 	colorStats := make(map[color.NRGBA]int)
+	collectOpts := svgOpts{
+		eps:         project.Epsilon,
+		palette:     project_src_colors(project),
+		colorMagnet: project.ColorMagnet,
+		colorCount:  colorStats,
+	}
 	for _, icon := range icons {
 		for _, fn := range icon.path {
-			if err := CollectSvgColors(fn, colorStats); err != nil {
-				return err
+			if _, err := ProcSvg(fn, collectOpts); err != nil {
+				return fmt.Errorf("error converting %s: %w", fn, err)
 			}
 		}
 	}
 
+	// Get palette(s) based on project settings
+	// and SVG colors.
 	vpal := getpalv(project, colorStats)
 
 	var pal0 []color.NRGBA
@@ -37,6 +46,11 @@ func pack_project(project Project) error {
 		pal0 = vpal[0]
 	}
 
+	convertOpts := svgOpts{
+		eps:         project.Epsilon,
+		palette:     pal0,
+		colorMagnet: project.ColorMagnet,
+	}
 	var pev []PackElem
 	for _, icon := range icons {
 		pe := PackElem{Name: icon.name}
@@ -44,7 +58,7 @@ func pack_project(project Project) error {
 			if cli.verbose {
 				fmt.Fprintf(os.Stderr, "Packing %s\n", fn)
 			}
-			x, err := ConvertSvg(fn, project.Epsilon, pal0)
+			x, err := ProcSvg(fn, convertOpts)
 			if err != nil {
 				return fmt.Errorf("error converting %s: %w", fn, err)
 			}
@@ -71,6 +85,30 @@ func pack_project(project Project) error {
 	}
 
 	return nil
+}
+
+func project_src_colors(project Project) []color.NRGBA {
+	var p []color.NRGBA
+	pm := make(map[color.NRGBA]struct{})
+
+	// Record palette colors.
+	for _, c0 := range project.Palette {
+		c := color.NRGBA(c0)
+		p = append(p, c)
+		pm[c] = struct{}{}
+	}
+
+	// Record color transform src colors.
+	for _, tr := range project.ColorTransform {
+		for c := range tr.Map {
+			if _, ok := pm[c]; !ok {
+				pm[c] = struct{}{}
+				p = append(p, c)
+			}
+		}
+	}
+
+	return p
 }
 
 func do_pack_disasm(project Project, k IconPack,

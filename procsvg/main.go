@@ -8,9 +8,10 @@ import (
 )
 
 var cli struct {
-	rebuild bool
-	verbose bool
-	disasm  bool
+	rebuild   bool
+	verbose   bool
+	showColor bool
+	disasm    bool
 
 	inkscape string
 }
@@ -18,6 +19,7 @@ var cli struct {
 func main() {
 	flag.BoolVar(&cli.rebuild, "r", false, "rebuild intermediate icons")
 	flag.BoolVar(&cli.verbose, "v", false, "verbose operation")
+	flag.BoolVar(&cli.showColor, "showcolor", false, "show icon colors")
 	flag.BoolVar(&cli.disasm, "disasm", false, "write disassembly")
 	flag.StringVar(&cli.inkscape, "inkscape", "", "inkscape path (default: $PROCSVG_INKSCAPE or $PATH)")
 	flag.Parse()

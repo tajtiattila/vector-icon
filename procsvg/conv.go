@@ -10,36 +10,38 @@ import (
 	"strings"
 )
 
-func ConvertSvg(fn string, eps float64, palette []color.NRGBA) (*ProgImage, error) {
+type svgOpts struct {
+	eps float64 // conversion precision
 
+	palette     []color.NRGBA
+	colorMagnet float64
+
+	colorCount map[color.NRGBA]int
+}
+
+func ProcSvg(fn string, opts svgOpts) (*ProgImage, error) {
 	svg, err := fileXmlTree(fn)
 	if err != nil {
 		return nil, err
 	}
 
 	cm := make(map[color.NRGBA]int)
-	for i, c := range palette {
+	for i, c := range opts.palette {
 		cm[c] = i
 	}
 
-	g := svgprog{fn: fn, colormap: cm}
-	g.mem.Precision = eps
+	g := svgprog{
+		fn:         fn,
+		palette:    opts.palette,
+		cmsquare:   opts.colorMagnet * opts.colorMagnet,
+		colormap:   cm,
+		colorCount: opts.colorCount,
+	}
+	g.mem.Precision = opts.eps
+
 	err = g.tree(svg)
 
 	return g.finish(), err
-}
-
-func CollectSvgColors(fn string, m map[color.NRGBA]int) error {
-	svg, err := fileXmlTree(fn)
-	if err != nil {
-		return err
-	}
-	g := svgprog{
-		fn:         fn,
-		colorCount: m,
-	}
-	g.tree(svg)
-	return nil
 }
 
 func fileXmlTree(fn string) (Node, error) {
@@ -112,6 +114,9 @@ func xmlTree(r io.Reader) (Node, error) {
 type svgprog struct {
 	fn       string
 	colormap map[color.NRGBA]int
+
+	palette  []color.NRGBA
+	cmsquare float64
 
 	colorCount map[color.NRGBA]int
 
@@ -261,7 +266,23 @@ func (g *svgprog) popTransform() {
 func (g *svgprog) handle_fill() {
 	c := g.solidFillColor
 
+	if g.cmsquare > 0 {
+		for _, x := range g.palette {
+			dr := int(c.R) - int(x.R)
+			dg := int(c.G) - int(x.G)
+			db := int(c.B) - int(x.B)
+			dsquare := float64(dr*dr + dg*dg + db*db)
+			if dsquare < g.cmsquare {
+				c = x
+				break
+			}
+		}
+	}
+
 	if g.colorCount != nil {
+		if cli.showColor {
+			fmt.Printf("  #%02x%02x%02x\n", c.R, c.G, c.B)
+		}
 		g.colorCount[c]++
 	}
 
