@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -139,16 +138,18 @@ func inkscapebin_checked() (string, error) {
 		return "", fmt.Errorf("Error getting inkscape version: %w", err)
 	}
 
-	i := bytes.IndexByte(out, '\n')
-	if i < 0 {
-		i = len(out)
-	}
-	line := string(out[:i])
-	if line < "Inkscape 1.2" {
-		return "", fmt.Errorf("Needs inkscape version 1.2+, got %v", line)
+	sout := string(out)
+	for _, line := range strings.SplitAfter(sout, "\n") {
+		if strings.HasPrefix(line, "Inkscape") {
+			if line < "Inkscape 1.2" {
+				return "", fmt.Errorf("Needs inkscape version 1.2+, got %v", line)
+			} else {
+				return v, nil
+			}
+		}
 	}
 
-	return v, nil
+	return "", fmt.Errorf("Can't recognize inkscape version: %v", sout)
 }
 
 func inkscapebin() (string, error) {
